@@ -86,11 +86,11 @@ function Login({ apiUrl = '/api/login', onSuccess }) {
           </div>
 
           <div className="controls">
-            <label className="remember">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-              Se souvenir de moi
-            </label>
-            <a className="forgot" href="#">Mot de passe oublié ?</a>
+              <label className="remember">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                Se souvenir de moi
+              </label>
+              <button type="button" className="forgot">Mot de passe oublié ?</button>
           </div>
 
           {error && <div className="error" role="alert">{error}</div>}
@@ -102,7 +102,7 @@ function Login({ apiUrl = '/api/login', onSuccess }) {
 
         <div className="login-foot">
           <span>Pas de compte ?</span>
-          <a href="#" className="signup">Contacter l'administrateur</a>
+          <button type="button" className="signup">Contacter l'administrateur</button>
         </div>
       </div>
     </div>
