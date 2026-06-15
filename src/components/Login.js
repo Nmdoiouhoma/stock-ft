@@ -100,10 +100,7 @@ function Login({ apiUrl = '/api/login', onSuccess }) {
           </button>
         </form>
 
-        <div className="login-foot">
-          <span>Pas de compte ?</span>
-          <button type="button" className="signup">Contacter l'administrateur</button>
-        </div>
+  {/* footer removed as requested */}
       </div>
     </div>
   );
