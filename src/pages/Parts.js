@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import './Parts.css';
+import '../components/Parts.css';
 import { authFetch } from '../utils/auth';
 
 const PIECE_TYPES = [
@@ -20,11 +20,11 @@ const EMPTY_FORM = {
   supplierId:    '',
 };
 
-function Parts({ isAdmin }) {
+function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
   const [parts,     setParts]     = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
-  const [form,      setForm]      = useState(null);
+  const [form,      setForm]      = useState(autoOpenAdd ? { ...EMPTY_FORM } : null);
   const [editingId, setEditingId] = useState(null);
   const [saving,    setSaving]    = useState(false);
 
@@ -108,6 +108,7 @@ function Parts({ isAdmin }) {
       }
       closeForm();
       load();
+      if (!editingId && onAfterAdd) onAfterAdd();
     } catch {
       setError('Impossible de contacter le serveur.');
     } finally {

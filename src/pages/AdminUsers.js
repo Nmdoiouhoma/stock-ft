@@ -1,0 +1,267 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { authFetch } from '../utils/auth';
+import './AdminUsers.css';
+
+const ALL_ROLES = ['ROLE_USER', 'ROLE_ADMIN'];
+
+const EMPTY_FORM = {
+  username: '',
+  password: '',
+  roles: ['ROLE_USER'],
+};
+
+export default function AdminUsers() {
+  const [users,     setUsers]     = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+  const [form,      setForm]      = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [saving,    setSaving]    = useState(false);
+  const [search,    setSearch]    = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await authFetch('/api/users');
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      setUsers(await res.json());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); };
+
+  const openEdit = (user) => {
+    setForm({
+      username: user.username ?? user.email ?? '',
+      password: '',
+      roles: user.roles ?? ['ROLE_USER'],
+    });
+    setEditingId(user.id);
+  };
+
+  const closeForm = () => { setForm(null); setEditingId(null); setError(''); };
+
+  const toggleRole = (role) => {
+    setForm(f => ({
+      ...f,
+      roles: f.roles.includes(role)
+        ? f.roles.filter(r => r !== role)
+        : [...f.roles, role],
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (form.roles.length === 0) {
+      setError('Sélectionnez au moins un rôle.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+
+    const body = {
+      username: form.username,
+      roles:    form.roles,
+      ...(form.password ? { password: form.password } : {}),
+    };
+
+    const url    = editingId ? `/api/users/${editingId}` : '/api/users';
+    const method = editingId ? 'PUT' : 'POST';
+
+    try {
+      const res  = await authFetch(url, { method, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.errors
+          ? data.errors.map(e => e.message).join(', ')
+          : data?.error || data?.message || `Erreur ${res.status}`;
+        setError(msg);
+        return;
+      }
+      closeForm();
+      load();
+    } catch {
+      setError('Impossible de contacter le serveur.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Supprimer cet utilisateur ?')) return;
+    setError('');
+    try {
+      const res = await authFetch(`/api/users/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error || data?.message || `Erreur ${res.status}`);
+        return;
+      }
+      load();
+    } catch {
+      setError('Impossible de contacter le serveur.');
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(u =>
+      String(u.username ?? u.email ?? '').toLowerCase().includes(q) ||
+      (u.roles ?? []).some(r => r.toLowerCase().includes(q))
+    );
+  }, [users, search]);
+
+  const adminCount = users.filter(u => (u.roles ?? []).includes('ROLE_ADMIN')).length;
+
+  return (
+    <div className="admin-container">
+      <div className="admin-header">
+        <div>
+          <h2 className="admin-title">Gestion des utilisateurs</h2>
+          <p className="admin-subtitle">Créez, modifiez et supprimez les comptes utilisateurs</p>
+        </div>
+        <button className="btn-primary" onClick={openCreate}>+ Nouvel utilisateur</button>
+      </div>
+
+      <div className="admin-stats">
+        <div className="stat-card">
+          <div className="stat-label">Total utilisateurs</div>
+          <div className="stat-value">{users.length}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Administrateurs</div>
+          <div className="stat-value admin-accent">{adminCount}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Utilisateurs simples</div>
+          <div className="stat-value">{users.length - adminCount}</div>
+        </div>
+      </div>
+
+      {error && !form && <div className="alert-error">{error}</div>}
+
+      <div className="admin-search-bar">
+        <input
+          className="search-input"
+          placeholder="Rechercher par nom ou rôle..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="loading-state"><p>Chargement des utilisateurs...</p></div>
+      ) : (
+        <div className="table-wrapper">
+          <table className="parts-table">
+            <thead>
+              <tr>
+                <th>Nom d'utilisateur</th>
+                <th>Rôles</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.length === 0 && (
+                <tr className="empty-state">
+                  <td colSpan={3}>Aucun utilisateur trouvé</td>
+                </tr>
+              )}
+              {filteredUsers.map(u => (
+                <tr key={u.id} className="table-row">
+                  <td className="cell-username">{u.username ?? u.email ?? '—'}</td>
+                  <td>
+                    <div className="role-badges">
+                      {(u.roles ?? []).map(r => (
+                        <span key={r} className={`role-badge ${r === 'ROLE_ADMIN' ? 'role-admin' : 'role-user'}`}>
+                          {r === 'ROLE_ADMIN' ? 'Admin' : 'Utilisateur'}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="cell-actions">
+                    <button className="btn-edit" onClick={() => openEdit(u)}>Modifier</button>
+                    <button className="btn-delete" onClick={() => handleDelete(u.id)}>Supprimer</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {form && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">
+              {editingId ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
+            </h3>
+
+            {error && <div className="alert-error">{error}</div>}
+
+            <form onSubmit={handleSubmit}>
+              <label className="form-field">
+                <span className="field-label">Nom d'utilisateur *</span>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={form.username}
+                  required
+                  autoComplete="off"
+                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                />
+              </label>
+
+              <label className="form-field">
+                <span className="field-label">
+                  {editingId ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe *'}
+                </span>
+                <input
+                  type="password"
+                  className="field-input"
+                  value={form.password}
+                  required={!editingId}
+                  autoComplete="new-password"
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                />
+              </label>
+
+              <div className="form-field">
+                <span className="field-label">Rôles *</span>
+                <div className="role-checkboxes">
+                  {ALL_ROLES.map(role => (
+                    <label key={role} className="role-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={form.roles.includes(role)}
+                        onChange={() => toggleRole(role)}
+                      />
+                      <span>{role === 'ROLE_ADMIN' ? 'Administrateur' : 'Utilisateur'}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="btn-secondary" onClick={closeForm} disabled={saving}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn-primary" disabled={saving}>
+                  {saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Créer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
