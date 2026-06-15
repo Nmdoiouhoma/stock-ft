@@ -1,0 +1,150 @@
+/* Professional, minimal login card */
+.login-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f6f8fb 0%, #eef3f9 100%);
+  padding: 24px;
+}
+
+.login-card {
+  width: 420px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.login-brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.login-title-group h1 {
+  font-size: 18px;
+  margin: 0;
+  color: #0f172a;
+}
+
+.login-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.field input[type="email"],
+.field input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e6eef8;
+  border-radius: 8px;
+  background: #fbfdff;
+  font-size: 14px;
+  color: #0b1220;
+}
+
+.field input:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.06);
+  border-color: rgba(99,102,241,0.6);
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #334155;
+}
+
+.remember {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.forgot {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.forgot:hover { text-decoration: underline; }
+
+.btn-submit {
+  width: 100%;
+  padding: 12px 14px;
+  background: linear-gradient(90deg, #3341ff 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn-submit[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error {
+  color: #b91c1c;
+  background: #fff1f2;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.login-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #64748b;
+  align-items: center;
+}
+
+.login-foot .signup {
+  color: #0f172a;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.login-foot .signup:hover { text-decoration: underline; }
