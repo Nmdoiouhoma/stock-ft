@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Login from './components/Login';
-import { setToken, getToken, clearToken, authFetch, decodeToken } from './utils/auth';
+import Parts from './components/Parts';
+import { setToken, getToken, clearToken, decodeToken } from './utils/auth';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -58,29 +59,7 @@ function App() {
         </div>
       </div>
 
-      <p>Bienvenue — vous êtes connecté. Implémentez ici la suite de l'application.</p>
-
-      <div style={{ marginTop: 20 }}>
-        <h3>Exemple : récupérer les pièces (/api/parts)</h3>
-        <button
-          onClick={async () => {
-            try {
-              const res = await authFetch('/api/parts', { method: 'GET' });
-              if (!res.ok) {
-                const txt = await res.text();
-                alert('Erreur: ' + res.status + '\n' + txt);
-                return;
-              }
-              const parts = await res.json();
-              alert('Parts reçues: ' + JSON.stringify(parts).slice(0, 500));
-            } catch (err) {
-              alert('Échec requête: ' + err.message);
-            }
-          }}
-        >
-          Charger les pièces
-        </button>
-      </div>
+      <Parts isAdmin={user.roles?.includes('ROLE_ADMIN')} />
     </div>
   );
 }
