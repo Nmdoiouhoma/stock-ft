@@ -1,25 +1,49 @@
 import { useState } from 'react';
 import './Layout.css';
 
-const NAV_TREE = [
-  {
-    id: 'atelier',
-    label: 'Atelier',
-    children: [
-      {
-        id: 'pieces',
-        label: 'Pièces',
-        children: [
-          { id: 'parts-list', label: 'Liste des pièces' },
-          { id: 'parts-add',  label: 'Ajouter une pièce' },
-        ],
-      },
-    ],
-  },
-];
+function buildNavTree(isAdmin) {
+  const tree = [
+    {
+      id: 'atelier',
+      label: 'Atelier',
+      children: [
+        {
+          id: 'pieces',
+          label: 'Pièces',
+          children: [
+            { id: 'parts-list', label: 'Liste des pièces' },
+            { id: 'parts-add',  label: 'Ajouter une pièce' },
+          ],
+        },
+      ],
+    },
+  ];
+
+  if (isAdmin) {
+    tree.push({
+      id: 'administration',
+      label: 'Administration',
+      adminOnly: true,
+      children: [
+        {
+          id: 'admin-users',
+          label: 'Utilisateurs',
+          children: [
+            { id: 'admin-users-list', label: 'Liste des utilisateurs' },
+          ],
+        },
+      ],
+    });
+  }
+
+  return tree;
+}
 
 export default function Layout({ activePage, onNavigate, user, onLogout, children }) {
-  const [open, setOpen] = useState({ atelier: true, pieces: true });
+  const isAdmin = user.roles?.includes('ROLE_ADMIN');
+  const navTree = buildNavTree(isAdmin);
+
+  const [open, setOpen] = useState({ atelier: true, pieces: true, administration: true, 'admin-users': true });
 
   const toggle = (id) => setOpen(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -38,14 +62,15 @@ export default function Layout({ activePage, onNavigate, user, onLogout, childre
       <div className="layout-body">
         <aside className="layout-sidebar">
           <nav>
-            {NAV_TREE.map(section => (
+            {navTree.map(section => (
               <div key={section.id} className="nav-section">
                 <button
-                  className="nav-section-btn"
+                  className={`nav-section-btn${section.adminOnly ? ' nav-section-admin' : ''}`}
                   onClick={() => toggle(section.id)}
                 >
                   <span className={`nav-chevron ${open[section.id] ? 'open' : ''}`}>›</span>
                   {section.label}
+                  {section.adminOnly && <span className="nav-admin-badge">Admin</span>}
                 </button>
 
                 {open[section.id] && section.children?.map(sub => (

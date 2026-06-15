@@ -164,6 +164,27 @@
   font-weight: 600;
 }
 
+/* ── Admin section highlight ── */
+.nav-section-btn.nav-section-admin {
+  color: #6d28d9;
+}
+
+.nav-section-btn.nav-section-admin:hover {
+  color: #4c1d95;
+}
+
+.nav-admin-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  background: #ede9fe;
+  color: #6d28d9;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* ── Chevron arrow ── */
 .nav-chevron {
   display: inline-block;

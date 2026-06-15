@@ -1,0 +1,166 @@
+/* Reuses shared classes from Parts.css (btn-primary, modal-*, table-wrapper, etc.) */
+
+.admin-container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.admin-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.admin-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: #fff;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e6eef8;
+}
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.stat-value.admin-accent {
+  color: #7c3aed;
+}
+
+.admin-search-bar {
+  margin-bottom: 20px;
+}
+
+.admin-search-bar .search-input {
+  width: 100%;
+  max-width: 400px;
+  padding: 10px 12px;
+  border: 1px solid #e6eef8;
+  border-radius: 8px;
+  background: #fbfdff;
+  font-size: 14px;
+  color: #0b1220;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.admin-search-bar .search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
+/* Username cell */
+.cell-username {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+/* Role badges */
+.role-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.role-badge.role-admin {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.role-badge.role-user {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* Role checkboxes in form */
+.role-checkboxes {
+  display: flex;
+  gap: 20px;
+  margin-top: 6px;
+}
+
+.role-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+}
+
+.role-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3341ff;
+}
+
+/* Access denied banner */
+.access-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.access-denied-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+
+.access-denied-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+}
+
+.access-denied-text {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Layout from './components/Layout';
 import Parts from './pages/Parts';
+import AdminUsers from './pages/AdminUsers';
 import { setToken, getToken, clearToken, decodeToken } from './utils/auth';
 
 function App() {
@@ -55,6 +56,8 @@ function App() {
         return <Parts key="parts-list" isAdmin={isAdmin} />;
       case 'parts-add':
         return <Parts key="parts-add" isAdmin={isAdmin} autoOpenAdd onAfterAdd={() => setActivePage('parts-list')} />;
+      case 'admin-users-list':
+        return isAdmin ? <AdminUsers key="admin-users-list" /> : null;
       default:
         return null;
     }
