@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './Login.css';
 
-function Login({ apiUrl = '/api/login', onSuccess }) {
+function Login({ apiUrl = '/api/login', onSuccess, onForgotPassword }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
@@ -90,7 +90,7 @@ function Login({ apiUrl = '/api/login', onSuccess }) {
                 <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                 Se souvenir de moi
               </label>
-              <button type="button" className="forgot">Mot de passe oublié ?</button>
+              <button type="button" className="forgot" onClick={onForgotPassword}>Mot de passe oublié ?</button>
           </div>
 
           {error && <div className="error" role="alert">{error}</div>}

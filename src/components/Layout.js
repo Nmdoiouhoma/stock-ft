@@ -7,14 +7,8 @@ function buildNavTree(isAdmin) {
       id: 'atelier',
       label: 'Atelier',
       children: [
-        {
-          id: 'pieces',
-          label: 'Pièces',
-          children: [
-            { id: 'parts-list', label: 'Liste des pièces' },
-            { id: 'parts-add',  label: 'Ajouter une pièce' },
-          ],
-        },
+        { id: 'parts-list',    label: 'Pièces' },
+        { id: 'routings-list', label: 'Gammes' },
       ],
     },
   ];
@@ -73,26 +67,32 @@ export default function Layout({ activePage, onNavigate, user, onLogout, childre
                   {section.adminOnly && <span className="nav-admin-badge">Admin</span>}
                 </button>
 
-                {open[section.id] && section.children?.map(sub => (
-                  <div key={sub.id} className="nav-subsection">
-                    <button
-                      className="nav-sub-btn"
-                      onClick={() => toggle(sub.id)}
-                    >
-                      <span className={`nav-chevron ${open[sub.id] ? 'open' : ''}`}>›</span>
-                      {sub.label}
-                    </button>
-
-                    {open[sub.id] && sub.children?.map(item => (
-                      <button
-                        key={item.id}
-                        className={`nav-item${activePage === item.id ? ' active' : ''}`}
-                        onClick={() => onNavigate(item.id)}
-                      >
-                        {item.label}
+                {open[section.id] && section.children?.map(child => (
+                  child.children ? (
+                    <div key={child.id} className="nav-subsection">
+                      <button className="nav-sub-btn" onClick={() => toggle(child.id)}>
+                        <span className={`nav-chevron ${open[child.id] ? 'open' : ''}`}>›</span>
+                        {child.label}
                       </button>
-                    ))}
-                  </div>
+                      {open[child.id] && child.children.map(item => (
+                        <button
+                          key={item.id}
+                          className={`nav-item${activePage === item.id ? ' active' : ''}`}
+                          onClick={() => onNavigate(item.id)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button
+                      key={child.id}
+                      className={`nav-item${activePage === child.id ? ' active' : ''}`}
+                      onClick={() => onNavigate(child.id)}
+                    >
+                      {child.label}
+                    </button>
+                  )
                 ))}
               </div>
             ))}

@@ -89,11 +89,53 @@
 }
 
 .forgot {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
   color: #2563eb;
+  font-size: 13px;
   text-decoration: none;
 }
 
 .forgot:hover { text-decoration: underline; }
+
+.back-link {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* ResetPassword success state */
+.reset-success {
+  align-items: center;
+  text-align: center;
+}
+
+.reset-check {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.reset-success-title {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.reset-success-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+}
 
 .btn-submit {
   width: 100%;

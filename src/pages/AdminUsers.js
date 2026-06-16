@@ -4,6 +4,20 @@ import './AdminUsers.css';
 
 const ALL_ROLES = ['ROLE_USER', 'ROLE_ADMIN'];
 
+// Normalise un utilisateur venant de l'API quel que soit le format des rôles
+function normalizeUser(u) {
+  const raw = u.roles ?? u.userRoles ?? [];
+  let roles;
+  if (Array.isArray(raw)) {
+    roles = raw.map(r => (typeof r === 'string' ? r : r?.name ?? r?.role ?? String(r)));
+  } else if (typeof raw === 'string') {
+    roles = raw.split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    roles = [];
+  }
+  return { ...u, roles };
+}
+
 const EMPTY_FORM = {
   username: '',
   password: '',
@@ -25,7 +39,12 @@ export default function AdminUsers() {
     try {
       const res = await authFetch('/api/users');
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
-      setUsers(await res.json());
+      const data = await res.json();
+      // Support tableau brut ou enveloppe Hydra/API Platform
+      const list = Array.isArray(data)
+        ? data
+        : (data['hydra:member'] ?? data.items ?? data.users ?? data.data ?? []);
+      setUsers(list.map(normalizeUser));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -38,10 +57,11 @@ export default function AdminUsers() {
   const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); };
 
   const openEdit = (user) => {
+    const normalized = normalizeUser(user);
     setForm({
-      username: user.username ?? user.email ?? '',
+      username: normalized.username ?? normalized.email ?? '',
       password: '',
-      roles: user.roles ?? ['ROLE_USER'],
+      roles: normalized.roles.length ? normalized.roles : ['ROLE_USER'],
     });
     setEditingId(user.id);
   };
