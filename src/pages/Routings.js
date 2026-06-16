@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '../utils/auth';
+import { useToast, ToastContainer } from '../components/Toast';
 import './Routings.css';
 
 const PAGE_SIZE = 5;
@@ -12,6 +13,7 @@ const EMPTY_FORM = {
 };
 
 export default function Routings({ isAdmin, onView }) {
+  const { toasts, addToast, removeToast } = useToast();
   const [routings, setRoutings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -91,6 +93,13 @@ export default function Routings({ isAdmin, onView }) {
   };
   const closeForm = () => { setForm(null); setEditingId(null); setError(''); };
 
+  // Only allow these part types when creating a routing
+  const isPartAllowedForCreate = (p) => {
+    if (!p) return false;
+    const t = String(p.type ?? p.kind ?? '').toLowerCase();
+    return t.includes('finished') || t.includes('intermediate');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -102,8 +111,15 @@ export default function Routings({ isAdmin, onView }) {
       if (Array.isArray(roles)) return roles.includes('ROLE_SUPERVISOR') || roles.includes('SUPERVISOR');
       return String(roles).toLowerCase().includes('supervisor');
     });
-    if ((partsList || []).length === 0) {
-      setError('Impossible de créer une gamme : aucune pièce disponible.');
+    if (!editingId) {
+      const allowed = (partsList || []).filter(isPartAllowedForCreate);
+      if (allowed.length === 0) {
+        setError('Impossible de créer une gamme : aucune pièce de type autorisé (intermediate/finished).');
+        setSaving(false);
+        return;
+      }
+    } else if ((partsList || []).length === 0) {
+      setError('Impossible de créer/éditer une gamme : aucune pièce disponible.');
       setSaving(false);
       return;
     }
@@ -125,13 +141,14 @@ export default function Routings({ isAdmin, onView }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
-        setError(msg);
+        addToast(msg, 'error');
         return;
       }
+      addToast(editingId ? 'Gamme modifiée avec succès' : 'Gamme créée avec succès', 'success');
       closeForm();
       load();
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     } finally {
       setSaving(false);
     }
@@ -139,17 +156,17 @@ export default function Routings({ isAdmin, onView }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette gamme ?')) return;
-    setError('');
     try {
       const res = await authFetch(`/api/routings/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error || `Erreur ${res.status}`);
+        addToast(data?.error || `Erreur ${res.status}`, 'error');
         return;
       }
+      addToast('Gamme supprimée', 'success');
       load();
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     }
   };
 
@@ -192,7 +209,7 @@ export default function Routings({ isAdmin, onView }) {
         </div>
       </div>
 
-      {error && !form && <div className="alert-error">{error}</div>}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       <div className="controls">
         <input className="search-input" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -263,7 +280,7 @@ export default function Routings({ isAdmin, onView }) {
                 )}
                 <select className="field-input" value={form.partId} required onChange={e => setForm(f => ({ ...f, partId: e.target.value }))}>
                   <option value="">-- Sélectionner une pièce --</option>
-                  {partsList.map(p => (
+                  {(editingId ? partsList : partsList.filter(isPartAllowedForCreate)).map(p => (
                     <option key={p.id} value={p.id}>{`${p.reference || ''} — ${p.label || p.reference || ''}`}</option>
                   ))}
                 </select>
@@ -284,12 +301,14 @@ export default function Routings({ isAdmin, onView }) {
 
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={closeForm} disabled={saving}>Annuler</button>
-                <button type="submit" className="btn-primary" disabled={saving || (partsList || []).length === 0 || supervisorCandidates.length === 0}>{saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Créer'}</button>
+                <button type="submit" className="btn-primary" disabled={saving || (editingId ? (partsList || []).length === 0 : (partsList || []).filter(isPartAllowedForCreate).length === 0) || supervisorCandidates.length === 0}>{saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Créer'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
