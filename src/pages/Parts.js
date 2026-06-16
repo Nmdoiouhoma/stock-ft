@@ -104,7 +104,11 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
       }
       closeForm();
       load();
-      if (!editingId && onAfterAdd) onAfterAdd();
+      if (!editingId) {
+        if (onAfterAdd) onAfterAdd();
+        // dispatch a global event so other components can react
+        try { window.dispatchEvent(new CustomEvent('parts:added')); } catch (e) { /* ignore */ }
+      }
     } catch {
       setError('Impossible de contacter le serveur.');
     } finally {

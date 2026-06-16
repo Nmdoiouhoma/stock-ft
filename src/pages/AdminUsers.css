@@ -114,6 +114,26 @@
   color: #0369a1;
 }
 
+.role-badge.role-supervisor {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.role-badge.role-worker {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.role-badge.role-customer {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.role-badge.role-seller {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
 /* Role checkboxes in form */
 .role-checkboxes {
   display: flex;
