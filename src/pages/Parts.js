@@ -14,7 +14,6 @@ const EMPTY_FORM = {
   label:         '',
   type:          'finished',
   stockQuantity: 0,
-  stockMin:      0,
   salePrice:     '',
   catalogPrice:  '',
   supplierId:    '',
@@ -38,7 +37,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
   // Dashboard statistics derived from parts
   const totalParts = parts.length;
   const totalQuantity = parts.reduce((s, p) => s + (Number(p.stockQuantity) || 0), 0);
-  const lowStockCount = parts.filter(p => Number(p.stockQuantity) < Number(p.stockMin)).length;
   const totalValue = parts.reduce((s, p) => s + ((p.salePrice != null ? Number(p.salePrice) : 0) * (Number(p.stockQuantity) || 0)), 0);
   const typeCounts = PIECE_TYPES.reduce((acc, t) => ({ ...acc, [t.value]: 0 }), {});
   parts.forEach(p => { typeCounts[p.type] = (typeCounts[p.type] || 0) + 1; });
@@ -67,7 +65,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
       label:         part.label,
       type:          part.type,
       stockQuantity: part.stockQuantity,
-      stockMin:      part.stockMin,
       salePrice:     part.salePrice  ?? '',
       catalogPrice:  part.catalogPrice ?? '',
       supplierId:    part.supplier?.id ?? '',
@@ -87,7 +84,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
       label:         form.label,
       type:          form.type,
       stockQuantity: parseInt(form.stockQuantity, 10),
-      stockMin:      parseInt(form.stockMin, 10),
       salePrice:     form.salePrice    !== '' ? parseFloat(form.salePrice)    : null,
       catalogPrice:  form.catalogPrice !== '' ? parseFloat(form.catalogPrice) : null,
       supplierId:    form.supplierId   !== '' ? parseInt(form.supplierId, 10) : null,
@@ -152,7 +148,7 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
       const va = (a[sortBy] != null) ? a[sortBy] : '';
       const vb = (b[sortBy] != null) ? b[sortBy] : '';
       // numeric for stock/salePrice
-      if (sortBy === 'stockQuantity' || sortBy === 'stockMin' || sortBy === 'salePrice' || sortBy === 'catalogPrice') {
+      if (sortBy === 'stockQuantity' || sortBy === 'salePrice' || sortBy === 'catalogPrice') {
         return (Number(va) - Number(vb)) * dir;
       }
       // special: type -> label
@@ -198,13 +194,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
         </div>
 
         <div className="dashboard-card">
-          <div className="dashboard-label">Sous stock</div>
-          <div className="dashboard-value" style={{ color: lowStockCount > 0 ? '#b91c1c' : 'inherit' }}>
-            {lowStockCount}
-          </div>
-        </div>
-
-        <div className="dashboard-card">
           <div className="dashboard-label">Valeur approximative</div>
           <div className="dashboard-value-small">{totalValue.toFixed(2)} €</div>
           <div className="dashboard-note">Basé sur prix vente</div>
@@ -230,7 +219,7 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
             <option value="label">Désignation</option>
             <option value="type">Type</option>
             <option value="stockQuantity">Stock</option>
-            <option value="stockMin">Stock min</option>
+
             <option value="salePrice">Prix vente</option>
           </select>
           <select className="sort-select" value={sortDir} onChange={e => setSortDir(e.target.value)}>
@@ -254,7 +243,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
                 <th>Désignation</th>
                 <th>Type</th>
                 <th>Stock</th>
-                <th>Min</th>
                 <th>Prix vente</th>
                 <th>Prix catalogue</th>
                 <th>Fournisseur</th>
@@ -264,7 +252,7 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
             <tbody>
               {filteredParts.length === 0 && (
                 <tr className="empty-state">
-                  <td colSpan={9}>Aucune pièce trouvée</td>
+                  <td colSpan={8}>Aucune pièce trouvée</td>
                 </tr>
               )}
               {paginatedParts.map(p => (
@@ -272,10 +260,9 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
                   <td className="cell-reference">{p.reference}</td>
                   <td>{p.label}</td>
                   <td>{typeLabel(p.type)}</td>
-                  <td className={p.stockQuantity < p.stockMin ? 'cell-low-stock' : ''}>
+                  <td>
                     {p.stockQuantity}
                   </td>
-                  <td>{p.stockMin}</td>
                   <td>{p.salePrice    != null ? p.salePrice.toFixed(2)    + ' €' : '—'}</td>
                   <td>{p.catalogPrice != null ? p.catalogPrice.toFixed(2) + ' €' : '—'}</td>
                   <td>{p.supplier?.name ?? '—'}</td>
@@ -357,16 +344,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
                     min={0}
                     step={1}
                     onChange={e => setForm(f => ({ ...f, stockQuantity: e.target.value }))}
-                    className="field-input"
-                  />
-                </Field>
-                <Field label="Stock minimum">
-                  <input
-                    type="number"
-                    value={form.stockMin}
-                    min={0}
-                    step={1}
-                    onChange={e => setForm(f => ({ ...f, stockMin: e.target.value }))}
                     className="field-input"
                   />
                 </Field>
