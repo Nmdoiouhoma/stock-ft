@@ -2,7 +2,15 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '../utils/auth';
 import './AdminUsers.css';
 
-const ALL_ROLES = ['ROLE_USER', 'ROLE_ADMIN'];
+const ALL_ROLES = ['admin', 'worker', 'customer', 'seller', 'supervisor'];
+
+const ROLE_LABELS = {
+  admin:      'Administrateur',
+  worker:     'Opérateur',
+  customer:   'Client',
+  seller:     'Vendeur',
+  supervisor: 'Superviseur',
+};
 
 // Normalise un utilisateur venant de l'API quel que soit le format des rôles
 function normalizeUser(u) {
@@ -15,16 +23,19 @@ function normalizeUser(u) {
   } else {
     roles = [];
   }
+  // Ensure roles are strings, trimmed and unique
+  roles = roles.map(r => String(r).trim()).filter(Boolean);
+  roles = Array.from(new Set(roles));
   return { ...u, roles };
 }
 
 const EMPTY_FORM = {
   username: '',
   password: '',
-  roles: ['ROLE_USER'],
+  roles: ['worker'],
 };
 
-export default function AdminUsers() {
+export default function AdminUsers({ onAfterAdd }) {
   const [users,     setUsers]     = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
@@ -61,7 +72,7 @@ export default function AdminUsers() {
     setForm({
       username: normalized.username ?? normalized.email ?? '',
       password: '',
-      roles: normalized.roles.length ? normalized.roles : ['ROLE_USER'],
+      roles: normalized.roles.length ? normalized.roles : ['worker'],
     });
     setEditingId(user.id);
   };
@@ -107,6 +118,10 @@ export default function AdminUsers() {
       }
       closeForm();
       load();
+      if (!editingId && onAfterAdd) onAfterAdd();
+      if (!editingId) {
+        try { window.dispatchEvent(new CustomEvent('users:added')); } catch (e) { /* ignore */ }
+      }
     } catch {
       setError('Impossible de contacter le serveur.');
     } finally {
@@ -139,7 +154,7 @@ export default function AdminUsers() {
     );
   }, [users, search]);
 
-  const adminCount = users.filter(u => (u.roles ?? []).includes('ROLE_ADMIN')).length;
+  const adminCount = users.filter(u => (u.roles ?? []).includes('admin')).length;
 
   return (
     <div className="admin-container">
@@ -201,8 +216,8 @@ export default function AdminUsers() {
                   <td>
                     <div className="role-badges">
                       {(u.roles ?? []).map(r => (
-                        <span key={r} className={`role-badge ${r === 'ROLE_ADMIN' ? 'role-admin' : 'role-user'}`}>
-                          {r === 'ROLE_ADMIN' ? 'Admin' : 'Utilisateur'}
+                        <span key={r} className={`role-badge role-${r.replace('ROLE_', '').toLowerCase()}`}>
+                          {ROLE_LABELS[r] ?? r}
                         </span>
                       ))}
                     </div>
@@ -264,7 +279,7 @@ export default function AdminUsers() {
                         checked={form.roles.includes(role)}
                         onChange={() => toggleRole(role)}
                       />
-                      <span>{role === 'ROLE_ADMIN' ? 'Administrateur' : 'Utilisateur'}</span>
+                      <span>{ROLE_LABELS[role] ?? role}</span>
                     </label>
                   ))}
                 </div>

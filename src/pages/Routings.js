@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '../utils/auth';
+import { useToast, ToastContainer } from '../components/Toast';
 import './Routings.css';
 
 const PAGE_SIZE = 5;
@@ -12,12 +13,15 @@ const EMPTY_FORM = {
 };
 
 export default function Routings({ isAdmin, onView }) {
+  const { toasts, addToast, removeToast } = useToast();
   const [routings, setRoutings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [form, setForm] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [partsList, setPartsList] = useState([]);
+  const [usersList, setUsersList] = useState([]);
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -38,6 +42,45 @@ export default function Routings({ isAdmin, onView }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const loadParts = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/parts');
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      setPartsList(await res.json());
+    } catch (e) {
+      // ignore part loading errors for the select; the form will show empty options
+      console.error('Erreur chargement pièces', e.message || e);
+    }
+  }, []);
+
+  useEffect(() => { loadParts(); }, [loadParts]);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/users');
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data['hydra:member'] ?? data.items ?? data.users ?? data.data ?? []);
+      setUsersList(list);
+    } catch (e) {
+      console.error('Erreur chargement utilisateurs', e.message || e);
+    }
+  }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // Listen to global events so other components can notify us when parts/users are added
+  useEffect(() => {
+    const onPartsAdded = () => { loadParts(); };
+    const onUsersAdded = () => { loadUsers(); };
+    window.addEventListener('parts:added', onPartsAdded);
+    window.addEventListener('users:added', onUsersAdded);
+    return () => {
+      window.removeEventListener('parts:added', onPartsAdded);
+      window.removeEventListener('users:added', onUsersAdded);
+    };
+  }, [loadParts, loadUsers]);
+
   const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); };
   const openEdit = (r) => {
     setForm({
@@ -50,10 +93,41 @@ export default function Routings({ isAdmin, onView }) {
   };
   const closeForm = () => { setForm(null); setEditingId(null); setError(''); };
 
+  // Only allow these part types when creating a routing
+  const isPartAllowedForCreate = (p) => {
+    if (!p) return false;
+    const t = String(p.type ?? p.kind ?? '').toLowerCase();
+    return t.includes('finished') || t.includes('intermediate');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
+    // Validate that selected part and supervisor are available
+    const supervisorCandidates = (usersList || []).filter(u => {
+      const roles = u.roles ?? u.userRoles ?? [];
+      if (!roles) return false;
+      if (Array.isArray(roles)) return roles.includes('ROLE_SUPERVISOR') || roles.includes('SUPERVISOR');
+      return String(roles).toLowerCase().includes('supervisor');
+    });
+    if (!editingId) {
+      const allowed = (partsList || []).filter(isPartAllowedForCreate);
+      if (allowed.length === 0) {
+        setError('Impossible de créer une gamme : aucune pièce de type autorisé (intermediate/finished).');
+        setSaving(false);
+        return;
+      }
+    } else if ((partsList || []).length === 0) {
+      setError('Impossible de créer/éditer une gamme : aucune pièce disponible.');
+      setSaving(false);
+      return;
+    }
+    if (supervisorCandidates.length === 0) {
+      setError('Impossible de créer une gamme : aucun superviseur trouvé. Créez un utilisateur avec le rôle superviseur.');
+      setSaving(false);
+      return;
+    }
     const body = {
       reference: form.reference,
       label: form.label,
@@ -67,13 +141,14 @@ export default function Routings({ isAdmin, onView }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
-        setError(msg);
+        addToast(msg, 'error');
         return;
       }
+      addToast(editingId ? 'Gamme modifiée avec succès' : 'Gamme créée avec succès', 'success');
       closeForm();
       load();
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     } finally {
       setSaving(false);
     }
@@ -81,17 +156,17 @@ export default function Routings({ isAdmin, onView }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette gamme ?')) return;
-    setError('');
     try {
       const res = await authFetch(`/api/routings/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error || `Erreur ${res.status}`);
+        addToast(data?.error || `Erreur ${res.status}`, 'error');
         return;
       }
+      addToast('Gamme supprimée', 'success');
       load();
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     }
   };
 
@@ -114,6 +189,14 @@ export default function Routings({ isAdmin, onView }) {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
+  // compute supervisor candidates once for render
+  const supervisorCandidates = (usersList || []).filter(u => {
+    const roles = u.roles ?? u.userRoles ?? [];
+    if (!roles) return false;
+    if (Array.isArray(roles)) return roles.includes('ROLE_SUPERVISOR') || roles.includes('SUPERVISOR');
+    return String(roles).toLowerCase().includes('supervisor');
+  });
+
   return (
     <div className="routings-container">
       <div className="routings-header">
@@ -126,7 +209,7 @@ export default function Routings({ isAdmin, onView }) {
         </div>
       </div>
 
-      {error && !form && <div className="alert-error">{error}</div>}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       <div className="controls">
         <input className="search-input" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -191,22 +274,41 @@ export default function Routings({ isAdmin, onView }) {
                 <input className="field-input" value={form.label} required onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
               </label>
               <label className="form-field">
-                <span className="field-label">ID Pièce *</span>
-                <input type="number" className="field-input" value={form.partId} required onChange={e => setForm(f => ({ ...f, partId: e.target.value }))} />
+                <span className="field-label">Pièce *</span>
+                {partsList.length === 0 && (
+                  <div className="alert-error">Aucune pièce disponible — créez une pièce avant de créer une gamme.</div>
+                )}
+                <select className="field-input" value={form.partId} required onChange={e => setForm(f => ({ ...f, partId: e.target.value }))}>
+                  <option value="">-- Sélectionner une pièce --</option>
+                  {(editingId ? partsList : partsList.filter(isPartAllowedForCreate)).map(p => (
+                    <option key={p.id} value={p.id}>{`${p.reference || ''} — ${p.label || p.reference || ''}`}</option>
+                  ))}
+                </select>
               </label>
               <label className="form-field">
-                <span className="field-label">ID Responsable *</span>
-                <input type="number" className="field-input" value={form.supervisorId} required onChange={e => setForm(f => ({ ...f, supervisorId: e.target.value }))} />
+                <span className="field-label">Responsable *</span>
+                {usersList.length === 0 && (
+                  <div className="alert-error">Aucun utilisateur disponible — créez un utilisateur avant de créer une gamme.</div>
+                )}
+                {/** Filter to users with role ROLE_SUPERVISOR if present, otherwise fallback to all users */}
+                <select className="field-input" value={form.supervisorId} required onChange={e => setForm(f => ({ ...f, supervisorId: e.target.value }))}>
+                  <option value="">-- Sélectionner un responsable --</option>
+                  {supervisorCandidates.map(u => (
+                    <option key={u.id} value={u.id}>{`${u.firstname ?? u.username ?? u.email ?? ''} ${u.lastname ? u.lastname : ''}`.trim()}</option>
+                  ))}
+                </select>
               </label>
 
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={closeForm} disabled={saving}>Annuler</button>
-                <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Créer'}</button>
+                <button type="submit" className="btn-primary" disabled={saving || (editingId ? (partsList || []).length === 0 : (partsList || []).filter(isPartAllowedForCreate).length === 0) || supervisorCandidates.length === 0}>{saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Créer'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
