@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   supervisorId: '',
 };
 
-export default function Routings({ isAdmin, onView }) {
+export default function Routings({ isAdmin, isSupervisor, onView }) {
   const { toasts, addToast, removeToast } = useToast();
   const [routings, setRoutings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +57,8 @@ export default function Routings({ isAdmin, onView }) {
 
   const loadUsers = useCallback(async () => {
     try {
-      const res = await authFetch('/api/users');
+      const url = isAdmin ? '/api/users' : '/api/users/supervisors';
+      const res = await authFetch(url);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data['hydra:member'] ?? data.items ?? data.users ?? data.data ?? []);
@@ -65,9 +66,9 @@ export default function Routings({ isAdmin, onView }) {
     } catch (e) {
       console.error('Erreur chargement utilisateurs', e.message || e);
     }
-  }, []);
+  }, [isAdmin]);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => { if (isAdmin || isSupervisor) loadUsers(); }, [isAdmin, isSupervisor, loadUsers]);
 
   // Listen to global events so other components can notify us when parts/users are added
   useEffect(() => {
@@ -106,10 +107,12 @@ export default function Routings({ isAdmin, onView }) {
     setError('');
     // Validate that selected part and supervisor are available
     const supervisorCandidates = (usersList || []).filter(u => {
-      const roles = u.roles ?? u.userRoles ?? [];
-      if (!roles) return false;
-      if (Array.isArray(roles)) return roles.includes('ROLE_SUPERVISOR') || roles.includes('SUPERVISOR');
-      return String(roles).toLowerCase().includes('supervisor');
+      const rolesRaw = u.roles ?? u.userRoles ?? [];
+      let rolesArr;
+      if (Array.isArray(rolesRaw)) rolesArr = rolesRaw.map(r => String(r || ''));
+      else rolesArr = String(rolesRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+      rolesArr = rolesArr.map(r => r.replace(/^ROLE_/i, '').toLowerCase());
+      return rolesArr.includes('supervisor') || rolesArr.join(',').toLowerCase().includes('supervisor');
     });
     if (!editingId) {
       const allowed = (partsList || []).filter(isPartAllowedForCreate);
@@ -191,10 +194,12 @@ export default function Routings({ isAdmin, onView }) {
 
   // compute supervisor candidates once for render
   const supervisorCandidates = (usersList || []).filter(u => {
-    const roles = u.roles ?? u.userRoles ?? [];
-    if (!roles) return false;
-    if (Array.isArray(roles)) return roles.includes('ROLE_SUPERVISOR') || roles.includes('SUPERVISOR');
-    return String(roles).toLowerCase().includes('supervisor');
+    const rolesRaw = u.roles ?? u.userRoles ?? [];
+    let rolesArr;
+    if (Array.isArray(rolesRaw)) rolesArr = rolesRaw.map(r => String(r || ''));
+    else rolesArr = String(rolesRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+    rolesArr = rolesArr.map(r => r.replace(/^ROLE_/i, '').toLowerCase());
+    return rolesArr.includes('supervisor') || rolesArr.join(',').toLowerCase().includes('supervisor');
   });
 
   return (
@@ -204,9 +209,11 @@ export default function Routings({ isAdmin, onView }) {
           <h2 className="routings-title">Liste des gammes</h2>
           <p className="routings-sub">Consultez et gérez les gammes</p>
         </div>
-        <div>
-          <button className="btn-primary" onClick={openCreate}>+ Nouvelle gamme</button>
-        </div>
+        {(isAdmin || isSupervisor) && (
+          <div>
+            <button className="btn-primary" onClick={openCreate}>+ Nouvelle gamme</button>
+          </div>
+        )}
       </div>
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -241,8 +248,8 @@ export default function Routings({ isAdmin, onView }) {
                   <td>{r.operationsCount ?? 0}</td>
                   <td className="cell-actions">
                     <button className="btn-view" onClick={() => onView && onView(r.id)}>Voir</button>
-                    <button className="btn-edit" onClick={() => openEdit(r)}>Modifier</button>
-                    {isAdmin && <button className="btn-delete" onClick={() => handleDelete(r.id)}>Supprimer</button>}
+                    {(isAdmin || isSupervisor) && <button className="btn-edit" onClick={() => openEdit(r)}>Modifier</button>}
+                    {(isAdmin || isSupervisor) && <button className="btn-delete" onClick={() => handleDelete(r.id)}>Supprimer</button>}
                   </td>
                 </tr>
               ))}

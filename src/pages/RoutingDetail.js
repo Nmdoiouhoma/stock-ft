@@ -3,7 +3,7 @@ import { authFetch } from '../utils/auth';
 import { useToast, ToastContainer } from '../components/Toast';
 import './Routings.css';
 
-export default function RoutingDetail({ id, onBack }) {
+export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
   const { toasts, addToast, removeToast } = useToast();
   const [routing, setRouting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -112,9 +112,11 @@ export default function RoutingDetail({ id, onBack }) {
 
       <div className="operations-list">
         <h3>Opérations</h3>
-        <div style={{ marginBottom: 8 }}>
-          <button className="btn-primary" onClick={openAdd}>+ Ajouter une opération</button>
-        </div>
+        {(isAdmin || isSupervisor) && (
+          <div style={{ marginBottom: 8 }}>
+            <button className="btn-primary" onClick={openAdd}>+ Ajouter une opération</button>
+          </div>
+        )}
         {(routing.operations || []).length === 0 ? (
           <div className="empty-state">Aucune opération</div>
         ) : (
@@ -123,10 +125,12 @@ export default function RoutingDetail({ id, onBack }) {
               <li key={op.id} className="operation-row">
                 <div className="op-index">{i + 1}</div>
                 <div className="op-desc">{op.label ?? op.name ?? 'Opération'}</div>
-                <div className="op-actions">
-                  <button className="btn-small" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
-                  <button className="btn-small" onClick={() => move(i, 1)} disabled={i === (routing.operations.length - 1)}>↓</button>
-                </div>
+                {(isAdmin || isSupervisor) && (
+                  <div className="op-actions">
+                    <button className="btn-small" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
+                    <button className="btn-small" onClick={() => move(i, 1)} disabled={i === (routing.operations.length - 1)}>↓</button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

@@ -136,16 +136,18 @@
   color: #1e293b;
 }
 
-/* ── Nav: leaf item (e.g. Liste des pièces) ── */
+/* ── Nav: leaf item ── */
 .nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: calc(100% - 12px);
   margin: 1px 6px;
   border: none;
   background: none;
   cursor: pointer;
   text-align: left;
-  padding: 6px 14px 6px 44px;
+  padding: 7px 14px 7px 26px;
   font-size: 13px;
   color: #64748b;
   font-family: inherit;
@@ -162,6 +164,11 @@
   background: #dbeafe;
   color: #1d4ed8;
   font-weight: 600;
+}
+
+/* Leaf items nested inside a subsection get extra left indent */
+.nav-item.nav-item-nested {
+  padding-left: 38px;
 }
 
 /* ── Admin section highlight ── */
@@ -198,4 +205,25 @@
 
 .nav-chevron.open {
   transform: rotate(90deg);
+}
+
+/* Icon displayed before nav items / subsections */
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #94a3b8;
+  transition: color 0.15s;
+}
+
+.nav-item:hover .nav-icon,
+.nav-sub-btn:hover .nav-icon {
+  color: #475569;
+}
+
+.nav-item.active .nav-icon {
+  color: #1d4ed8;
 }

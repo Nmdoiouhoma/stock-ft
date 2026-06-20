@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '../utils/auth';
 import './AdminUsers.css';
+import '../components/Parts.css';
 
 const ALL_ROLES = ['admin', 'worker', 'customer', 'seller', 'supervisor'];
 
@@ -12,7 +13,6 @@ const ROLE_LABELS = {
   supervisor: 'Superviseur',
 };
 
-// Normalise un utilisateur venant de l'API quel que soit le format des rôles
 function normalizeUser(u) {
   const raw = u.roles ?? u.userRoles ?? [];
   let roles;
@@ -23,8 +23,8 @@ function normalizeUser(u) {
   } else {
     roles = [];
   }
-  // Ensure roles are strings, trimmed and unique
-  roles = roles.map(r => String(r).trim()).filter(Boolean);
+  roles = roles.map(r => String(r).trim()).filter(Boolean)
+    .map(r => r.replace(/^ROLE_/i, '').toLowerCase());
   roles = Array.from(new Set(roles));
   return { ...u, roles };
 }
@@ -44,6 +44,14 @@ export default function AdminUsers({ onAfterAdd }) {
   const [saving,    setSaving]    = useState(false);
   const [search,    setSearch]    = useState('');
 
+  // Workstation association modal
+  const [wsModal,    setWsModal]    = useState(null);
+  const [wsDetails,  setWsDetails]  = useState([]);
+  const [loadingWs,  setLoadingWs]  = useState(false);
+  const [wsSelectId, setWsSelectId] = useState('');
+  const [wsSaving,   setWsSaving]   = useState(false);
+  const [wsError,    setWsError]    = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -51,7 +59,6 @@ export default function AdminUsers({ onAfterAdd }) {
       const res = await authFetch('/api/users');
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = await res.json();
-      // Support tableau brut ou enveloppe Hydra/API Platform
       const list = Array.isArray(data)
         ? data
         : (data['hydra:member'] ?? data.items ?? data.users ?? data.data ?? []);
@@ -65,6 +72,7 @@ export default function AdminUsers({ onAfterAdd }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── User form ────────────────────────────────────────────────────────────
   const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); };
 
   const openEdit = (user) => {
@@ -145,6 +153,100 @@ export default function AdminUsers({ onAfterAdd }) {
     }
   };
 
+  // ── Workstation modal ────────────────────────────────────────────────────
+  const fetchWsDetails = async () => {
+    const listRes = await authFetch('/api/workstations');
+    if (!listRes.ok) throw new Error(`Erreur ${listRes.status}`);
+    const listJson = await listRes.json();
+    const list = Array.isArray(listJson)
+      ? listJson
+      : (listJson['hydra:member'] ?? listJson.items ?? listJson.data ?? []);
+    const details = await Promise.all(
+      list.map(ws =>
+        authFetch(`/api/workstations/${ws.id}`).then(r => r.ok ? r.json() : null)
+      )
+    );
+    return details.filter(Boolean);
+  };
+
+  const openWsModal = async (user) => {
+    const userName = `${user.firstname ?? ''} ${user.lastname ?? ''}`.trim()
+      || user.username || user.email || `#${user.id}`;
+    setWsModal({ userId: user.id, userName });
+    setWsSelectId('');
+    setWsError('');
+    setLoadingWs(true);
+    try {
+      setWsDetails(await fetchWsDetails());
+    } catch (e) {
+      setWsError(e.message || 'Impossible de charger les postes de travail');
+    } finally {
+      setLoadingWs(false);
+    }
+  };
+
+  const closeWsModal = () => { setWsModal(null); setWsError(''); setWsDetails([]); };
+
+  const reloadWsDetails = async () => {
+    try { setWsDetails(await fetchWsDetails()); } catch { /* ignore */ }
+  };
+
+  const handleAddWs = async (e) => {
+    e.preventDefault();
+    if (!wsSelectId || !wsModal) return;
+    setWsSaving(true); setWsError('');
+    try {
+      const res = await authFetch(
+        `/api/workstations/${wsSelectId}/users/${wsModal.userId}`,
+        { method: 'POST' }
+      );
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || `Erreur ${res.status}`);
+      }
+      setWsSelectId('');
+      await reloadWsDetails();
+    } catch (e) {
+      setWsError(e.message || "Erreur lors de l'association");
+    } finally {
+      setWsSaving(false);
+    }
+  };
+
+  const handleRemoveWs = async (wsId) => {
+    if (!wsModal) return;
+    if (!window.confirm('Retirer la qualification sur ce poste de travail ?')) return;
+    setWsError('');
+    try {
+      const res = await authFetch(
+        `/api/workstations/${wsId}/users/${wsModal.userId}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || `Erreur ${res.status}`);
+      }
+      await reloadWsDetails();
+    } catch (e) {
+      setWsError(e.message || 'Erreur lors du retrait');
+    }
+  };
+
+  const userWs = useMemo(() => {
+    if (!wsModal) return [];
+    return wsDetails.filter(ws =>
+      (ws.qualifiedUsers || []).some(u => u.id === wsModal.userId)
+    );
+  }, [wsDetails, wsModal]);
+
+  const availableWs = useMemo(() => {
+    if (!wsModal) return [];
+    return wsDetails.filter(ws =>
+      !(ws.qualifiedUsers || []).some(u => u.id === wsModal.userId)
+    );
+  }, [wsDetails, wsModal]);
+
+  // ── List filter ──────────────────────────────────────────────────────────
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return users;
@@ -216,15 +318,18 @@ export default function AdminUsers({ onAfterAdd }) {
                   <td>
                     <div className="role-badges">
                       {(u.roles ?? []).map(r => (
-                        <span key={r} className={`role-badge role-${r.replace('ROLE_', '').toLowerCase()}`}>
+                        <span key={r} className={`role-badge role-${String(r).toLowerCase()}`}>
                           {ROLE_LABELS[r] ?? r}
                         </span>
                       ))}
                     </div>
                   </td>
-                  <td className="cell-actions">
-                    <button className="btn-edit" onClick={() => openEdit(u)}>Modifier</button>
-                    <button className="btn-delete" onClick={() => handleDelete(u.id)}>Supprimer</button>
+                  <td>
+                    <div className="cell-actions">
+                      <button className="btn-view" onClick={() => openWsModal(u)}>Postes</button>
+                      <button className="btn-edit" onClick={() => openEdit(u)}>Modifier</button>
+                      <button className="btn-delete" onClick={() => handleDelete(u.id)}>Supprimer</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -233,11 +338,12 @@ export default function AdminUsers({ onAfterAdd }) {
         </div>
       )}
 
+      {/* ── User create/edit modal ── */}
       {form && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">
-              {editingId ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
+              {editingId ? "Modifier l'utilisateur" : 'Nouvel utilisateur'}
             </h3>
 
             {error && <div className="alert-error">{error}</div>}
@@ -294,6 +400,100 @@ export default function AdminUsers({ onAfterAdd }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Workstation association modal ── */}
+      {wsModal && (
+        <div className="modal-overlay" onClick={closeWsModal}>
+          <div className="modal-content" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Postes de travail — {wsModal.userName}</h3>
+
+            {wsError && <div className="alert-error">{wsError}</div>}
+
+            {loadingWs ? (
+              <p style={{ color: '#64748b', fontSize: 14 }}>Chargement des postes...</p>
+            ) : (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <p className="field-label" style={{ marginBottom: 8 }}>
+                    Postes qualifiés
+                    <span className="count-badge" style={{ marginLeft: 8 }}>{userWs.length}</span>
+                  </p>
+                  {userWs.length === 0 ? (
+                    <div className="empty-block" style={{ padding: '12px 16px', fontSize: 13 }}>
+                      Aucun poste qualifié
+                    </div>
+                  ) : (
+                    <div className="table-wrapper">
+                      <table className="parts-table">
+                        <thead>
+                          <tr>
+                            <th>Référence</th>
+                            <th>Désignation</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userWs.map(ws => (
+                            <tr key={ws.id}>
+                              <td className="cell-reference">{ws.reference ?? '—'}</td>
+                              <td>{ws.label ?? '—'}</td>
+                              <td>
+                                <button className="btn-delete" onClick={() => handleRemoveWs(ws.id)}>
+                                  Retirer
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <form onSubmit={handleAddWs}>
+                  <label className="form-field">
+                    <span className="field-label">Qualifier sur un poste</span>
+                    {availableWs.length === 0 ? (
+                      <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>
+                        Tous les postes sont déjà associés à cet utilisateur.
+                      </p>
+                    ) : (
+                      <select
+                        className="field-input"
+                        value={wsSelectId}
+                        onChange={e => setWsSelectId(e.target.value)}
+                        required
+                      >
+                        <option value="">— Sélectionner un poste —</option>
+                        {availableWs.map(ws => (
+                          <option key={ws.id} value={ws.id}>
+                            {ws.reference ? `[${ws.reference}] ` : ''}{ws.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </label>
+
+                  <div className="form-actions">
+                    <button type="button" className="btn-secondary" onClick={closeWsModal}>
+                      Fermer
+                    </button>
+                    {availableWs.length > 0 && (
+                      <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={wsSaving || !wsSelectId}
+                      >
+                        {wsSaving ? 'Association...' : 'Qualifier'}
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
