@@ -7,12 +7,15 @@ import Parts from './pages/Parts';
 import AdminUsers from './pages/AdminUsers';
 import Routings from './pages/Routings';
 import RoutingDetail from './pages/RoutingDetail';
+import Workstations from './pages/Workstations';
+import WorkstationDetail from './pages/WorkstationDetail';
 import { setToken, getToken, clearToken, decodeToken } from './utils/auth';
 
 function App() {
   const [user,       setUser]       = useState(null);
   const [activePage, setActivePage] = useState('parts-list');
   const [selectedRoutingId, setSelectedRoutingId] = useState(null);
+  const [selectedWorkstationId, setSelectedWorkstationId] = useState(null);
   const [authScreen, setAuthScreen] = useState('login');
   const [resetToken, setResetToken] = useState(null);
 
@@ -79,6 +82,10 @@ function App() {
         return <Routings key="routings-list" isAdmin={isAdmin} onView={(id) => { setSelectedRoutingId(id); setActivePage('routings-detail'); }} />;
       case 'routings-detail':
         return selectedRoutingId ? <RoutingDetail key={`routing-${selectedRoutingId}`} id={selectedRoutingId} onBack={() => setActivePage('routings-list')} /> : null;
+      case 'workstations-list':
+        return <Workstations key="workstations-list" isAdmin={isAdmin} onView={(id) => { setSelectedWorkstationId(id); setActivePage('workstations-detail'); }} />;
+      case 'workstations-detail':
+        return selectedWorkstationId ? <WorkstationDetail key={`workstation-${selectedWorkstationId}`} id={selectedWorkstationId} onBack={() => setActivePage('workstations-list')} /> : null;
       case 'admin-users-list':
         return isAdmin ? <AdminUsers key="admin-users-list" /> : null;
       default:

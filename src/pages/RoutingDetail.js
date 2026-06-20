@@ -156,7 +156,7 @@ export default function RoutingDetail({ id, onBack }) {
                 </select>
               </label>
               <label className="form-field">
-                <span className="field-label">Machine (optionnelle)</span>
+                <span className="field-label">Machine</span>
                 <select className="field-input" value={addForm.machineId} onChange={e => setAddForm(f => ({ ...f, machineId: e.target.value }))}>
                   <option value="">-- Aucune --</option>
                   {machines.map(m => (
