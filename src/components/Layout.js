@@ -8,7 +8,8 @@ function buildNavTree(isAdmin) {
       label: 'Atelier',
       children: [
         { id: 'parts-list',    label: 'Pièces' },
-        { id: 'routings-list', label: 'Gammes' },
+        { id: 'routings-list',      label: 'Gammes' },
+        { id: 'workstations-list', label: 'Postes de travail' },
       ],
     },
   ];

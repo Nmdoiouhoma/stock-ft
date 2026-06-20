@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import '../components/Parts.css';
 import { authFetch } from '../utils/auth';
+import { useToast, ToastContainer } from '../components/Toast';
 
 const PIECE_TYPES = [
   { value: 'finished',     label: 'Fini' },
@@ -22,10 +23,10 @@ const EMPTY_FORM = {
 function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
   const [parts,     setParts]     = useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState('');
   const [form,      setForm]      = useState(autoOpenAdd ? { ...EMPTY_FORM } : null);
   const [editingId, setEditingId] = useState(null);
   const [saving,    setSaving]    = useState(false);
+  const { toasts, addToast, removeToast } = useToast();
 
   // Search / sort / pagination
   const [search, setSearch] = useState('');
@@ -43,17 +44,16 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await authFetch('/api/parts');
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       setParts(await res.json());
     } catch (e) {
-      setError(e.message);
+      addToast(e.message, 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -72,12 +72,11 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
     setEditingId(part.id);
   };
 
-  const closeForm = () => { setForm(null); setEditingId(null); setError(''); };
+  const closeForm = () => { setForm(null); setEditingId(null); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setError('');
 
     const body = {
       reference:     form.reference,
@@ -99,18 +98,18 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
         const msg = data?.errors
           ? data.errors.map(e => e.message).join(', ')
           : data?.error || `Erreur ${res.status}`;
-        setError(msg);
+        addToast(msg, 'error');
         return;
       }
+      addToast(editingId ? 'Pièce modifiée avec succès' : 'Pièce créée avec succès', 'success');
       closeForm();
       load();
       if (!editingId) {
         if (onAfterAdd) onAfterAdd();
-        // dispatch a global event so other components can react
         try { window.dispatchEvent(new CustomEvent('parts:added')); } catch (e) { /* ignore */ }
       }
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     } finally {
       setSaving(false);
     }
@@ -118,17 +117,17 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette pièce ?')) return;
-    setError('');
     try {
       const res = await authFetch(`/api/parts/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error || `Erreur ${res.status}`);
+        addToast(data?.error || `Erreur ${res.status}`, 'error');
         return;
       }
+      addToast('Pièce supprimée', 'success');
       load();
     } catch {
-      setError('Impossible de contacter le serveur.');
+      addToast('Impossible de contacter le serveur.', 'error');
     }
   };
 
@@ -204,10 +203,7 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
         </div>
       </div>
 
-      {/* Error message */}
-      {error && !form && (
-        <div className="alert-error">{error}</div>
-      )}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       {/* Search / Sort controls */}
       <div className="controls-section">
@@ -246,9 +242,9 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
                 <th>Référence</th>
                 <th>Désignation</th>
                 <th>Type</th>
-                <th>Stock</th>
-                <th>Prix vente</th>
-                <th>Prix catalogue</th>
+                <th className="cell-numeric">Stock</th>
+                <th className="cell-numeric">Prix vente</th>
+                <th className="cell-numeric">Prix catalogue</th>
                 <th>Fournisseur</th>
                 <th>Actions</th>
               </tr>
@@ -264,12 +260,10 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
                   <td className="cell-reference">{p.reference}</td>
                   <td>{p.label}</td>
                   <td>{typeLabel(p.type)}</td>
-                  <td>
-                    {p.stockQuantity}
-                  </td>
-                  <td>{p.salePrice    != null ? p.salePrice.toFixed(2)    + ' €' : '—'}</td>
-                  <td>{p.catalogPrice != null ? p.catalogPrice.toFixed(2) + ' €' : '—'}</td>
-                  <td>{p.supplier?.name ?? '—'}</td>
+                  <td className="cell-numeric">{p.stockQuantity}</td>
+                  <td className={p.salePrice    != null ? 'cell-numeric' : 'cell-empty'}>{p.salePrice    != null ? p.salePrice.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '—'}</td>
+                  <td className={p.catalogPrice != null ? 'cell-numeric' : 'cell-empty'}>{p.catalogPrice != null ? p.catalogPrice.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '—'}</td>
+                  <td className={p.supplier?.name ? '' : 'cell-empty'}>{p.supplier?.name ?? '—'}</td>
                   <td className="cell-actions">
                     <button className="btn-edit" onClick={() => openEdit(p)}>Modifier</button>
                     {isAdmin && (
@@ -301,8 +295,6 @@ function Parts({ isAdmin, autoOpenAdd, onAfterAdd }) {
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">{editingId ? 'Modifier la pièce' : 'Nouvelle pièce'}</h3>
-
-            {error && <div className="alert-error">{error}</div>}
 
             <form onSubmit={handleSubmit}>
               <Field label="Référence *" required>
