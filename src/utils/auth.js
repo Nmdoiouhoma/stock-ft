@@ -14,7 +14,25 @@ export function clearToken() {
 
 export function decodeToken(token) {
   try {
-    return JSON.parse(atob(token.split('.')[1]));
+    const raw = String(token || '');
+    const payload = JSON.parse(atob(raw.split('.')[1] || ''));
+
+    // Normalize roles into an array of short lowercase names (e.g. 'admin', 'worker')
+    // Accepts roles as array or comma-separated string and strips optional 'ROLE_' prefix.
+    if (payload && payload.roles) {
+      let roles = payload.roles;
+      if (!Array.isArray(roles)) {
+        roles = String(roles || '').split(',').map(s => s.trim()).filter(Boolean);
+      }
+      roles = roles.map(r => String(r || '')
+        .replace(/^ROLE_/i, '')
+        .trim()
+        .toLowerCase()
+      ).filter(Boolean);
+      payload.roles = Array.from(new Set(roles));
+    }
+
+    return payload;
   } catch {
     return null;
   }
@@ -32,5 +50,20 @@ export async function authFetch(input, init = {}) {
   }
 
   const res = await fetch(input, Object.assign({}, init, { headers }));
+
+  // If backend returns unauthorized, clear token and redirect to login page.
+  // This lets the top-level App (which shows the Login when no user/token)
+  // take over and display the login screen.
+  if (res.status === 401) {
+    try {
+      clearToken();
+    } catch (e) {
+      // ignore
+    }
+    if (typeof window !== 'undefined') {
+      window.location.replace('/');
+    }
+  }
+
   return res;
 }

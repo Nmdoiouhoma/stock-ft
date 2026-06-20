@@ -9,6 +9,8 @@ import Routings from './pages/Routings';
 import RoutingDetail from './pages/RoutingDetail';
 import Workstations from './pages/Workstations';
 import WorkstationDetail from './pages/WorkstationDetail';
+import Machines from './pages/Machines';
+import MachineDetail from './pages/MachineDetail';
 import { setToken, getToken, clearToken, decodeToken } from './utils/auth';
 
 function App() {
@@ -16,6 +18,7 @@ function App() {
   const [activePage, setActivePage] = useState('parts-list');
   const [selectedRoutingId, setSelectedRoutingId] = useState(null);
   const [selectedWorkstationId, setSelectedWorkstationId] = useState(null);
+  const [selectedMachineId,     setSelectedMachineId]     = useState(null);
   const [authScreen, setAuthScreen] = useState('login');
   const [resetToken, setResetToken] = useState(null);
 
@@ -70,24 +73,32 @@ function App() {
     );
   }
 
-  const isAdmin = user.roles?.includes('ROLE_ADMIN');
+  // roles are normalized by decodeToken to lowercase short names (e.g. 'admin')
+  const isAdmin      = user.roles?.includes('admin');
+  const isSupervisor = user.roles?.includes('supervisor');
+  // supervisors can view everything but cannot perform admin actions
+  const canAdmin     = isAdmin && !isSupervisor;
 
   const renderPage = () => {
     switch (activePage) {
       case 'parts-list':
-        return <Parts key="parts-list" isAdmin={isAdmin} />;
+        return <Parts key="parts-list" isAdmin={canAdmin} />;
       case 'parts-add':
-        return <Parts key="parts-add" isAdmin={isAdmin} autoOpenAdd onAfterAdd={() => setActivePage('parts-list')} />;
+        return <Parts key="parts-add" isAdmin={canAdmin} autoOpenAdd onAfterAdd={() => setActivePage('parts-list')} />;
       case 'routings-list':
-        return <Routings key="routings-list" isAdmin={isAdmin} onView={(id) => { setSelectedRoutingId(id); setActivePage('routings-detail'); }} />;
+        return <Routings key="routings-list" isAdmin={canAdmin} isSupervisor={isSupervisor} onView={(id) => { setSelectedRoutingId(id); setActivePage('routings-detail'); }} />;
       case 'routings-detail':
-        return selectedRoutingId ? <RoutingDetail key={`routing-${selectedRoutingId}`} id={selectedRoutingId} onBack={() => setActivePage('routings-list')} /> : null;
+        return selectedRoutingId ? <RoutingDetail key={`routing-${selectedRoutingId}`} id={selectedRoutingId} isAdmin={canAdmin} isSupervisor={isSupervisor} onBack={() => setActivePage('routings-list')} /> : null;
       case 'workstations-list':
-        return <Workstations key="workstations-list" isAdmin={isAdmin} onView={(id) => { setSelectedWorkstationId(id); setActivePage('workstations-detail'); }} />;
+        return <Workstations key="workstations-list" isAdmin={canAdmin} onView={(id) => { setSelectedWorkstationId(id); setActivePage('workstations-detail'); }} />;
       case 'workstations-detail':
-        return selectedWorkstationId ? <WorkstationDetail key={`workstation-${selectedWorkstationId}`} id={selectedWorkstationId} onBack={() => setActivePage('workstations-list')} /> : null;
+        return selectedWorkstationId ? <WorkstationDetail key={`workstation-${selectedWorkstationId}`} id={selectedWorkstationId} isAdmin={canAdmin} onBack={() => setActivePage('workstations-list')} /> : null;
+      case 'machines-list':
+        return <Machines key="machines-list" isAdmin={canAdmin} onView={(id) => { setSelectedMachineId(id); setActivePage('machines-detail'); }} />;
+      case 'machines-detail':
+        return selectedMachineId ? <MachineDetail key={`machine-${selectedMachineId}`} id={selectedMachineId} onBack={() => setActivePage('machines-list')} /> : null;
       case 'admin-users-list':
-        return isAdmin ? <AdminUsers key="admin-users-list" /> : null;
+        return canAdmin ? <AdminUsers key="admin-users-list" /> : null;
       default:
         return null;
     }
