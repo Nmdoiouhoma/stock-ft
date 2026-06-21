@@ -95,7 +95,7 @@ export default function Layout({ activePage, onNavigate, user, onLogout, childre
   return (
     <div className="layout">
       <header className="layout-header">
-        <span className="layout-title">Stock Management</span>
+        <span className="layout-title">Ping Pong Stock</span>
         <div className="layout-user">
           <span className="layout-user-email">{user.email}</span>
           <button className="layout-logout-btn" onClick={onLogout}>

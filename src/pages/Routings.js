@@ -216,8 +216,6 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
         )}
       </div>
 
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
       <div className="controls">
         <input className="search-input" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
@@ -245,7 +243,7 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
                   <td className="cell-reference">{r.label || r.reference}</td>
                   <td>{r.part ? `${r.part.reference} — ${r.part.label}` : '—'}</td>
                   <td>{r.supervisor ? `${r.supervisor.firstname} ${r.supervisor.lastname}` : '—'}</td>
-                  <td>{r.operationsCount ?? 0}</td>
+                  <td>{r.operations?.length ?? r.operationsCount ?? 0}</td>
                   <td className="cell-actions">
                     <button className="btn-view" onClick={() => onView && onView(r.id)}>Voir</button>
                     {(isAdmin || isSupervisor) && <button className="btn-edit" onClick={() => openEdit(r)}>Modifier</button>}
