@@ -51,7 +51,7 @@ function Login({ apiUrl = '/api/login', onSuccess, onForgotPassword }) {
         <div className="login-brand">
           <img src="/logo192.png" alt="logo" className="login-logo" />
           <div className="login-title-group">
-            <h1 id="login-title">Stock Management</h1>
+            <h1 id="login-title">Ping Pong Stock</h1>
             <p className="login-subtitle">Accédez à votre espace de gestion</p>
           </div>
         </div>
