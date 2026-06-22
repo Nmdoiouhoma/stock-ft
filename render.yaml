@@ -5,8 +5,8 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./build
     envVars:
-      - key: REACT_APP_API_BASE
-        value: https://pingpong-backend-at0h.onrender.com
+      - key: REACT_APP_API_URL
+        value: https://stock-bk.onrender.com
     routes:
       - type: rewrite
         source: /*
