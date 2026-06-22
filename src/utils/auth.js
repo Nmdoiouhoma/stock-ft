@@ -1,3 +1,5 @@
+export const API_BASE = process.env.REACT_APP_API_BASE || '';
+
 // Minimal auth helpers
 export function setToken(token) {
   if (!token) return;
@@ -49,7 +51,8 @@ export async function authFetch(input, init = {}) {
     headers['Authorization'] = 'Bearer ' + token;
   }
 
-  const res = await fetch(input, Object.assign({}, init, { headers }));
+  const url = typeof input === 'string' && input.startsWith('/') ? API_BASE + input : input;
+  const res = await fetch(url, Object.assign({}, init, { headers }));
 
   // If backend returns unauthorized, clear token and redirect to login page.
   // This lets the top-level App (which shows the Login when no user/token)

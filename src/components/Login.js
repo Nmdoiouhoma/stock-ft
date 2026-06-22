@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { API_BASE } from '../utils/auth';
 import './Login.css';
 
-function Login({ apiUrl = '/api/login', onSuccess, onForgotPassword }) {
+function Login({ apiUrl, onSuccess, onForgotPassword }) {
+  apiUrl = apiUrl || `${API_BASE}/api/login`;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);

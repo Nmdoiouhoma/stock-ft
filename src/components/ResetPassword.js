@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_BASE } from '../utils/auth';
 import './Login.css';
 
 function ResetPassword({ token, onBack }) {
@@ -23,7 +24,7 @@ function ResetPassword({ token, onBack }) {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/reset-password', {
+      const res = await fetch(`${API_BASE}/api/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
