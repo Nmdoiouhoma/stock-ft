@@ -47,9 +47,25 @@ const ICONS = {
       <circle cx="3" cy="18" r="1" fill="currentColor"/>
     </svg>
   ),
+  quotes: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <polyline points="10 9 9 9 8 9"/>
+    </svg>
+  ),
+  orders: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 0 1-8 0"/>
+    </svg>
+  ),
 };
 
-function buildNavTree(isAdmin) {
+function buildNavTree(isAdmin, isSeller, isCustomer) {
   const tree = [
     {
       id: 'atelier',
@@ -62,6 +78,20 @@ function buildNavTree(isAdmin) {
       ],
     },
   ];
+
+  if (isAdmin || isSeller || isCustomer) {
+    const commercialChildren = [
+      { id: 'quotes-list', label: 'Devis', icon: 'quotes' },
+    ];
+    if (isAdmin || isSeller) {
+      commercialChildren.push({ id: 'orders-list', label: 'Commandes', icon: 'orders' });
+    }
+    tree.push({
+      id: 'commercial',
+      label: 'Commercial',
+      children: commercialChildren,
+    });
+  }
 
   if (isAdmin) {
     tree.push({
@@ -85,10 +115,12 @@ function buildNavTree(isAdmin) {
 }
 
 export default function Layout({ activePage, onNavigate, user, onLogout, children }) {
-  const isAdmin = user.roles?.includes('admin');
-  const navTree = buildNavTree(isAdmin);
+  const isAdmin    = user.roles?.includes('admin');
+  const isSeller   = user.roles?.includes('seller');
+  const isCustomer = user.roles?.includes('customer');
+  const navTree = buildNavTree(isAdmin, isSeller, isCustomer);
 
-  const [open, setOpen] = useState({ atelier: true, pieces: true, administration: true, 'admin-users': true });
+  const [open, setOpen] = useState({ atelier: true, pieces: true, commercial: true, administration: true, 'admin-users': true });
 
   const toggle = (id) => setOpen(prev => ({ ...prev, [id]: !prev[id] }));
 

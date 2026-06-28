@@ -11,14 +11,21 @@ import Workstations from './pages/Workstations';
 import WorkstationDetail from './pages/WorkstationDetail';
 import Machines from './pages/Machines';
 import MachineDetail from './pages/MachineDetail';
+import Quotes from './pages/Quotes';
+import QuoteCreate from './pages/QuoteCreate';
+import QuoteDetail from './pages/QuoteDetail';
+import Orders from './pages/Orders';
+import OrderDetail from './pages/OrderDetail';
 import { setToken, getToken, clearToken, decodeToken } from './utils/auth';
 
 function App() {
   const [user,       setUser]       = useState(null);
   const [activePage, setActivePage] = useState('parts-list');
-  const [selectedRoutingId, setSelectedRoutingId] = useState(null);
+  const [selectedRoutingId,     setSelectedRoutingId]     = useState(null);
   const [selectedWorkstationId, setSelectedWorkstationId] = useState(null);
   const [selectedMachineId,     setSelectedMachineId]     = useState(null);
+  const [selectedQuoteId,       setSelectedQuoteId]       = useState(null);
+  const [selectedOrderId,       setSelectedOrderId]       = useState(null);
   const [authScreen, setAuthScreen] = useState('login');
   const [resetToken, setResetToken] = useState(null);
 
@@ -76,8 +83,11 @@ function App() {
   // roles are normalized by decodeToken to lowercase short names (e.g. 'admin')
   const isAdmin      = user.roles?.includes('admin');
   const isSupervisor = user.roles?.includes('supervisor');
+  const isSeller     = user.roles?.includes('seller');
+  const isCustomer   = user.roles?.includes('customer');
   // supervisors can view everything but cannot perform admin actions
   const canAdmin     = isAdmin && !isSupervisor;
+  const canEditQuote = isAdmin || isSeller;
 
   const renderPage = () => {
     switch (activePage) {
@@ -99,6 +109,54 @@ function App() {
         return selectedMachineId ? <MachineDetail key={`machine-${selectedMachineId}`} id={selectedMachineId} onBack={() => setActivePage('machines-list')} /> : null;
       case 'admin-users-list':
         return canAdmin ? <AdminUsers key="admin-users-list" /> : null;
+
+      // ── Devis ────────────────────────────────────────────────
+      case 'quotes-list':
+        return (canEditQuote || isCustomer)
+          ? <Quotes
+              key="quotes-list"
+              canEdit={canEditQuote}
+              onView={(id) => { setSelectedQuoteId(id); setActivePage('quotes-detail'); }}
+              onCreate={() => setActivePage('quotes-create')}
+            />
+          : null;
+      case 'quotes-create':
+        return canEditQuote
+          ? <QuoteCreate
+              key="quotes-create"
+              onBack={() => setActivePage('quotes-list')}
+              onCreated={(id) => { setSelectedQuoteId(id); setActivePage('quotes-detail'); }}
+            />
+          : null;
+      case 'quotes-detail':
+        return selectedQuoteId
+          ? <QuoteDetail
+              key={`quote-${selectedQuoteId}`}
+              id={selectedQuoteId}
+              canEdit={canEditQuote}
+              onBack={() => setActivePage('quotes-list')}
+              onOrderCreated={(id) => { setSelectedOrderId(id); setActivePage('orders-detail'); }}
+            />
+          : null;
+
+      // ── Commandes ─────────────────────────────────────────────
+      case 'orders-list':
+        return canEditQuote
+          ? <Orders
+              key="orders-list"
+              onView={(id) => { setSelectedOrderId(id); setActivePage('orders-detail'); }}
+            />
+          : null;
+      case 'orders-detail':
+        return (selectedOrderId && canEditQuote)
+          ? <OrderDetail
+              key={`order-${selectedOrderId}`}
+              id={selectedOrderId}
+              canEdit={canEditQuote}
+              onBack={() => setActivePage('orders-list')}
+            />
+          : null;
+
       default:
         return null;
     }
