@@ -3,13 +3,21 @@ import { authFetch } from '../utils/auth';
 import { useToast, ToastContainer } from '../components/Toast';
 import './Routings.css';
 
-const FORECAST_STATUSES = [
+const ORDER_STATUSES = [
   { value: 'pending',     label: 'En attente' },
   { value: 'in_progress', label: 'En cours' },
   { value: 'completed',   label: 'Terminé' },
 ];
 
-const STATUS_LABEL = Object.fromEntries(FORECAST_STATUSES.map(s => [s.value, s.label]));
+const STATUS_LABEL = Object.fromEntries(ORDER_STATUSES.map(s => [s.value, s.label]));
+
+const EMPTY_ORDER_FORM = {
+  plannedDate: '',
+  plannedQuantity: '',
+  status: 'pending',
+  actualQuantity: '',
+  actualDuration: '',
+};
 
 function fmtDate(s) {
   if (!s) return '—';
@@ -18,26 +26,33 @@ function fmtDate(s) {
 
 export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
   const { toasts, addToast, removeToast } = useToast();
-  const [routing, setRouting] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [workstations, setWorkstations] = useState([]);
-  const [machines, setMachines] = useState([]);
+  const [routing, setRouting]             = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState('');
+  const [workstations, setWorkstations]   = useState([]);
+  const [machines, setMachines]           = useState([]);
 
-  // Add-operation modal
+  // Add-operation modal (create new)
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ label: '', unitTime: '', workstationId: '', machineId: '' });
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding]   = useState(false);
 
-  // Per-operation data
-  const [forecasts, setForecasts] = useState({});   // { [opId]: [...] }
-  const [completions, setCompletions] = useState({}); // { [opId]: [...] }
+  // Associate existing operation modal
+  const [showAssoc, setShowAssoc]       = useState(false);
+  const [allOperations, setAllOperations] = useState([]);
+  const [assocLoading, setAssocLoading] = useState(false);
+  const [associating, setAssociating]   = useState(false);
 
-  // Edit-operation modal: { op, form, saving }
+  // Per-operation production orders: { [opId]: [...] }
+  const [productionOrders, setProductionOrders] = useState({});
+
+  // Edit-operation modal
   const [opModal, setOpModal] = useState(null);
 
-  // Generic sub-modal: { type, mode, operationId, itemId, form, saving }
-  const [modal, setModal] = useState(null);
+  // Production order modal: { mode, operationId, itemId, form, saving }
+  const [orderModal, setOrderModal] = useState(null);
+
+  const canSupervisor = isAdmin || isSupervisor;
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -54,26 +69,18 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
 
       const ops = rJson.operations ?? [];
       if (ops.length > 0) {
-        const subResults = await Promise.allSettled(
-          ops.flatMap(op => [
-            authFetch(`/api/operations/${op.id}/forecasts`)
-              .then(r => r.ok ? r.json() : {})
-              .then(j => ({ opId: op.id, kind: 'forecast', list: Array.isArray(j) ? j : (j['hydra:member'] ?? j.items ?? j.data ?? []) })),
-            authFetch(`/api/operations/${op.id}/completions`)
-              .then(r => r.ok ? r.json() : {})
-              .then(j => ({ opId: op.id, kind: 'completion', list: Array.isArray(j) ? j : (j['hydra:member'] ?? j.items ?? j.data ?? []) })),
-          ])
+        const results = await Promise.allSettled(
+          ops.map(op =>
+            authFetch(`/api/operations/${op.id}/production-orders`)
+              .then(r => r.ok ? r.json() : [])
+              .then(j => ({ opId: op.id, list: Array.isArray(j) ? j : [] }))
+          )
         );
-        const fc = {}, cp = {};
-        for (const r of subResults) {
-          if (r.status === 'fulfilled') {
-            const { opId, kind, list } = r.value;
-            if (kind === 'forecast') fc[opId] = list;
-            else cp[opId] = list;
-          }
+        const po = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled') po[r.value.opId] = r.value.list;
         }
-        setForecasts(fc);
-        setCompletions(cp);
+        setProductionOrders(po);
       }
 
       if (wRes.ok) {
@@ -90,66 +97,101 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const move = (index, dir) => {
+  // Visual-only reorder (moves are sent to backend via the existing /move endpoint)
+  const move = async (op, dir) => {
     if (!routing) return;
     const ops = (routing.operations || []).slice();
-    const to = index + dir;
+    const i   = ops.findIndex(o => o.id === op.id);
+    const to  = i + dir;
     if (to < 0 || to >= ops.length) return;
-    const tmp = ops[to]; ops[to] = ops[index]; ops[index] = tmp;
+
+    const res = await authFetch(`/api/operations/${op.id}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ direction: dir < 0 ? 'up' : 'down' }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      addToast(data?.error || `Erreur déplacement ${res.status}`, 'error');
+      return;
+    }
+    // Reflect the swap locally
+    const tmp = ops[to]; ops[to] = ops[i]; ops[i] = tmp;
     setRouting(r => ({ ...r, operations: ops }));
   };
 
-  const openAdd = () => {
-    setShowAdd(true);
-    setAddForm({ label: '', unitTime: '', workstationId: '', machineId: '' });
-    setError('');
+  // ── Associate existing operation ──────────────────────────────────────
+
+  const openAssoc = async () => {
+    setShowAssoc(true);
+    setAssocLoading(true);
+    try {
+      const res = await authFetch('/api/operations');
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json) ? json : (json['hydra:member'] ?? json.items ?? json.data ?? []);
+        const linked = new Set((routing?.operations ?? []).map(o => o.id));
+        setAllOperations(list.filter(o => !linked.has(o.id)));
+      }
+    } catch { /* ignore */ }
+    finally { setAssocLoading(false); }
   };
-  const closeAdd = () => { setShowAdd(false); setError(''); };
+
+  const closeAssoc = () => { setShowAssoc(false); setAllOperations([]); };
+
+  const handleAssociate = async (opId) => {
+    setAssociating(true);
+    try {
+      const res = await authFetch(`/api/routings/${id}/operations/${opId}`, { method: 'POST' });
+      if (res.status === 409) {
+        addToast('Cette opération est déjà associée à la gamme.', 'error');
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(data?.error || `Erreur ${res.status}`, 'error');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      addToast('Opération associée', 'success');
+      setRouting(r => ({ ...r, operations: [...(r.operations || []), data] }));
+      setProductionOrders(prev => ({ ...prev, [opId]: [] }));
+      setAllOperations(prev => prev.filter(o => o.id !== opId));
+    } catch { addToast('Impossible de contacter le serveur.', 'error'); }
+    finally { setAssociating(false); }
+  };
+
+  // ── Add operation ─────────────────────────────────────────────────────
+
+  const openAdd  = () => { setShowAdd(true); setAddForm({ label: '', unitTime: '', workstationId: '', machineId: '' }); };
+  const closeAdd = () => { setShowAdd(false); };
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
-    setAdding(true); setError('');
+    setAdding(true);
     try {
       const body = {
-        label: addForm.label,
-        unitTime: parseFloat(addForm.unitTime),
+        label:         addForm.label,
+        unitTime:      parseFloat(addForm.unitTime),
         workstationId: addForm.workstationId ? parseInt(addForm.workstationId, 10) : undefined,
-        machineId: addForm.machineId ? parseInt(addForm.machineId, 10) : null,
+        machineId:     addForm.machineId     ? parseInt(addForm.machineId,     10) : null,
       };
-      const res = await authFetch(`/api/routings/${id}/operations`, { method: 'POST', body: JSON.stringify(body) });
+      const res  = await authFetch(`/api/routings/${id}/operations`, { method: 'POST', body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
-        addToast(msg, 'error');
+        addToast(data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`, 'error');
         return;
       }
-      addToast('Opération ajoutée avec succès', 'success');
+      addToast('Opération ajoutée', 'success');
       setRouting(r => ({ ...r, operations: [...(r.operations || []), data] }));
-      setForecasts(prev => ({ ...prev, [data.id]: [] }));
-      setCompletions(prev => ({ ...prev, [data.id]: [] }));
+      setProductionOrders(prev => ({ ...prev, [data.id]: [] }));
       closeAdd();
-    } catch {
-      addToast('Impossible de contacter le serveur.', 'error');
-    } finally {
-      setAdding(false);
-    }
+    } catch { addToast('Impossible de contacter le serveur.', 'error'); }
+    finally  { setAdding(false); }
   };
 
-  // ── Operation edit / delete ─────────────────────────────────────────
+  // ── Edit / Remove operation ───────────────────────────────────────────
 
-  const openEditOp = (op) => {
-    setOpModal({
-      op,
-      form: {
-        label: op.label ?? '',
-        unitTime: String(op.unitTime ?? ''),
-        workstationId: String(op.workstation?.id ?? op.workstationId ?? ''),
-        machineId: String(op.machine?.id ?? op.machineId ?? ''),
-      },
-      saving: false,
-    });
-  };
-
+  const openEditOp  = (op) => setOpModal({ op, form: { label: op.label ?? '', unitTime: String(op.unitTime ?? ''), workstationId: String(op.workstation?.id ?? ''), machineId: String(op.machine?.id ?? '') }, saving: false });
   const closeOpModal = () => setOpModal(null);
 
   const handleEditOpSubmit = async (e) => {
@@ -158,17 +200,16 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
     setOpModal(m => ({ ...m, saving: true }));
     const { op, form } = opModal;
     const body = {
-      label: form.label,
-      unitTime: parseFloat(form.unitTime),
+      label:         form.label,
+      unitTime:      parseFloat(form.unitTime),
       workstationId: form.workstationId ? parseInt(form.workstationId, 10) : undefined,
-      machineId: form.machineId ? parseInt(form.machineId, 10) : null,
+      machineId:     form.machineId     ? parseInt(form.machineId,     10) : null,
     };
     try {
-      const res = await authFetch(`/api/operations/${op.id}`, { method: 'PUT', body: JSON.stringify(body) });
+      const res  = await authFetch(`/api/operations/${op.id}`, { method: 'PUT', body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
-        addToast(msg, 'error');
+        addToast(data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`, 'error');
         setOpModal(m => ({ ...m, saving: false }));
         return;
       }
@@ -181,105 +222,108 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
     }
   };
 
-  const handleDeleteOp = async (opId) => {
-    if (!window.confirm('Supprimer cette opération ?')) return;
-    const res = await authFetch(`/api/operations/${opId}`, { method: 'DELETE' });
+  // Removes operation from this routing (does NOT delete the operation entity)
+  const handleRemoveOp = async (opId) => {
+    if (!window.confirm('Retirer cette opération de la gamme ?')) return;
+    const res = await authFetch(`/api/routings/${id}/operations/${opId}`, { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
-      addToast(`Erreur suppression ${res.status}`, 'error');
+      const data = await res.json().catch(() => ({}));
+      addToast(data?.error || `Erreur ${res.status}`, 'error');
       return;
     }
-    addToast('Opération supprimée', 'success');
+    addToast('Opération retirée de la gamme', 'success');
     setRouting(r => ({ ...r, operations: r.operations.filter(o => o.id !== opId) }));
-    setForecasts(prev => { const next = { ...prev }; delete next[opId]; return next; });
-    setCompletions(prev => { const next = { ...prev }; delete next[opId]; return next; });
+    setProductionOrders(prev => { const next = { ...prev }; delete next[opId]; return next; });
   };
 
-  // ── Sub-modal ───────────────────────────────────────────────────────
+  // ── Production order modal ────────────────────────────────────────────
 
-  const openModal = (type, operationId, item = null) => {
-    const form = type === 'forecast'
-      ? { date: item?.plannedDate?.split('T')[0] ?? '', quantity: String(item?.plannedQuantity ?? ''), status: item?.status ?? 'pending' }
-      : { date: item?.date?.split('T')[0] ?? '', quantity: String(item?.actualQuantity ?? ''), duration: String(item?.actualDuration ?? '') };
-    setModal({ type, mode: item ? 'edit' : 'create', operationId, itemId: item?.id ?? null, form, saving: false });
+  const openOrderModal = (operationId, item = null) => {
+    const form = item ? {
+      plannedDate:    item.plannedDate?.split('T')[0] ?? '',
+      plannedQuantity: String(item.plannedQuantity ?? ''),
+      status:         item.status ?? 'pending',
+      actualQuantity: item.actualQuantity != null ? String(item.actualQuantity) : '',
+      actualDuration: item.actualDuration != null ? String(item.actualDuration) : '',
+    } : { ...EMPTY_ORDER_FORM };
+    setOrderModal({ mode: item ? 'edit' : 'create', operationId, itemId: item?.id ?? null, form, saving: false });
   };
 
-  const closeModal = () => setModal(null);
+  const closeOrderModal = () => setOrderModal(null);
 
-  const handleModalSubmit = async (e) => {
+  const handleOrderSubmit = async (e) => {
     e.preventDefault();
-    if (!modal) return;
-    setModal(m => ({ ...m, saving: true }));
-    const { type, mode, operationId, itemId, form } = modal;
+    if (!orderModal) return;
+    setOrderModal(m => ({ ...m, saving: true }));
+    const { mode, operationId, itemId, form } = orderModal;
     const isEdit = mode === 'edit';
-    const body = type === 'forecast'
-      ? { plannedDate: form.date, plannedQuantity: parseInt(form.quantity, 10), status: form.status }
-      : { date: form.date, actualQuantity: parseInt(form.quantity, 10), actualDuration: parseInt(form.duration, 10) };
+
+    const prevStatus = isEdit
+      ? (productionOrders[operationId] ?? []).find(o => o.id === itemId)?.status
+      : null;
+
+    const body = {
+      plannedDate:     form.plannedDate,
+      plannedQuantity: parseInt(form.plannedQuantity, 10),
+      status:          form.status,
+      actualQuantity:  form.actualQuantity  !== '' ? parseInt(form.actualQuantity,  10) : null,
+      actualDuration:  form.actualDuration  !== '' ? parseFloat(form.actualDuration)    : null,
+    };
+    // Workers cannot send plannedDate/plannedQuantity (backend returns 403)
+    // Supervisors can always send them — no client-side strip needed
+
     const url = isEdit
-      ? `/api/operations/${operationId}/${type}s/${itemId}`
-      : `/api/operations/${operationId}/${type}s`;
+      ? `/api/operations/${operationId}/production-orders/${itemId}`
+      : `/api/operations/${operationId}/production-orders`;
+
     try {
-      const res = await authFetch(url, { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      const res  = await authFetch(url, { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
-        addToast(msg, 'error');
-        setModal(m => ({ ...m, saving: false }));
+        addToast(data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`, 'error');
+        setOrderModal(m => ({ ...m, saving: false }));
         return;
       }
-      if (type === 'forecast') {
-        const isDone = form.status === 'completed' || data.status === 'completed';
-        if (isDone) {
-          addToast('Opération terminée — stock de la pièce mis à jour', 'success');
-          closeModal();
-          load();
-          window.dispatchEvent(new CustomEvent('parts:added'));
-          return;
-        } else {
-          setForecasts(prev => ({
-            ...prev,
-            [operationId]: isEdit
-              ? (prev[operationId] ?? []).map(f => f.id === itemId ? data : f)
-              : [...(prev[operationId] ?? []), data],
-          }));
-          addToast(`Prévision ${isEdit ? 'modifiée' : 'ajoutée'}`, 'success');
-        }
-      } else {
-        setCompletions(prev => ({
-          ...prev,
-          [operationId]: isEdit
-            ? (prev[operationId] ?? []).map(c => c.id === itemId ? data : c)
-            : [...(prev[operationId] ?? []), data],
-        }));
-        addToast(`Réalisation ${isEdit ? 'modifiée' : 'ajoutée'}`, 'success');
+
+      setProductionOrders(prev => ({
+        ...prev,
+        [operationId]: isEdit
+          ? (prev[operationId] ?? []).map(o => o.id === itemId ? data : o)
+          : [...(prev[operationId] ?? []), data],
+      }));
+
+      // Notify stock update when transitioning to completed
+      if (data.status === 'completed' && prevStatus !== 'completed') {
+        window.dispatchEvent(new CustomEvent('parts:added'));
       }
-      closeModal();
+
+      addToast(isEdit ? 'Ordre mis à jour' : 'Ordre créé', 'success');
+      closeOrderModal();
     } catch {
       addToast('Impossible de contacter le serveur.', 'error');
-      setModal(m => ({ ...m, saving: false }));
+      setOrderModal(m => ({ ...m, saving: false }));
     }
   };
 
-  const handleDelete = async (type, operationId, itemId) => {
-    const label = type === 'forecast' ? 'prévision' : 'réalisation';
-    if (!window.confirm(`Supprimer cette ${label} ?`)) return;
-    const res = await authFetch(`/api/operations/${operationId}/${type}s/${itemId}`, { method: 'DELETE' });
+  const handleDeleteOrder = async (operationId, itemId) => {
+    if (!window.confirm('Supprimer cet ordre de fabrication ?')) return;
+    const res = await authFetch(`/api/operations/${operationId}/production-orders/${itemId}`, { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
       addToast(`Erreur suppression ${res.status}`, 'error');
       return;
     }
-    addToast(`${type === 'forecast' ? 'Prévision' : 'Réalisation'} supprimée`, 'success');
-    if (type === 'forecast') {
-      setForecasts(prev => ({ ...prev, [operationId]: (prev[operationId] ?? []).filter(f => f.id !== itemId) }));
-    } else {
-      setCompletions(prev => ({ ...prev, [operationId]: (prev[operationId] ?? []).filter(c => c.id !== itemId) }));
-    }
+    addToast('Ordre supprimé', 'success');
+    setProductionOrders(prev => ({
+      ...prev,
+      [operationId]: (prev[operationId] ?? []).filter(o => o.id !== itemId),
+    }));
   };
 
-  if (loading) return <div className="loading-state"><p>Chargement du détail...</p></div>;
-  if (error) return <div className="alert-error">{error}</div>;
-  if (!routing) return <div>Aucune donnée</div>;
+  // ── Render ────────────────────────────────────────────────────────────
 
-  const canSupervisor = isAdmin || isSupervisor;
+  if (loading) return <div className="loading-state"><p>Chargement du détail...</p></div>;
+  if (error)   return <div className="alert-error">{error}</div>;
+  if (!routing) return <div>Aucune donnée</div>;
 
   return (
     <div className="routing-detail">
@@ -293,16 +337,17 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
           <div className="card-value">{routing.supervisor ? `${routing.supervisor.firstname} ${routing.supervisor.lastname}` : '—'}</div>
         </div>
         <div className="card">
-          <div className="card-label">Créé le</div>
-          <div className="card-value">{routing.createdAt ? new Date(routing.createdAt).toLocaleString() : '—'}</div>
+          <div className="card-label">Nb opérations</div>
+          <div className="card-value">{routing.operationsCount ?? (routing.operations?.length ?? 0)}</div>
         </div>
       </div>
 
       <div className="operations-list">
         <h3>Opérations</h3>
         {canSupervisor && (
-          <div style={{ marginBottom: 8 }}>
-            <button className="btn-primary" onClick={openAdd}>+ Ajouter une opération</button>
+          <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+            <button className="btn-primary" onClick={openAdd}>+ Nouvelle opération</button>
+            <button className="btn-secondary" onClick={openAssoc}>+ Associer une opération existante</button>
           </div>
         )}
         {(routing.operations || []).length === 0 ? (
@@ -313,79 +358,54 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
               <li key={op.id} className="operation-card">
                 <div className="operation-header">
                   <div className="op-header-left">
-                    <span className="op-index">{i + 1}</span>
-                    <span className="op-title">Opération {i + 1} — {op.label ?? op.name ?? 'Opération'}</span>
+                    <span className="op-index">{op.rank ?? i + 1}</span>
+                    <span className="op-title">{op.label ?? 'Opération'}</span>
+                    {op.workstation && <span className="op-meta">{op.workstation.label}</span>}
+                    {op.machine     && <span className="op-meta op-meta-machine">{op.machine.label}</span>}
                   </div>
                   {canSupervisor && (
                     <div className="op-reorder">
-                      <button className="btn-small" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
-                      <button className="btn-small" onClick={() => move(i, 1)} disabled={i === routing.operations.length - 1}>↓</button>
+                      <button className="btn-small" onClick={() => move(op, -1)} disabled={i === 0}>↑</button>
+                      <button className="btn-small" onClick={() => move(op,  1)} disabled={i === routing.operations.length - 1}>↓</button>
                       <button className="btn-icon" title="Modifier" onClick={() => openEditOp(op)}>✎</button>
-                      <button className="btn-icon btn-icon-del" title="Supprimer" onClick={() => handleDeleteOp(op.id)}>✕</button>
+                      <button className="btn-icon btn-icon-del" title="Retirer de la gamme" onClick={() => handleRemoveOp(op.id)}>✕</button>
                     </div>
                   )}
                 </div>
 
+                {/* Ordres de fabrication */}
                 <div className="op-sub-sections">
-                  {/* Forecasts */}
                   <div className="op-sub-section">
                     <div className="sub-section-header">
-                      <span className="sub-section-title">Prévu :</span>
-                      {canSupervisor && (forecasts[op.id] ?? []).length === 0 && (
-                        <button className="btn-add-inline" onClick={() => openModal('forecast', op.id)}>
-                          + Ajouter une prévision
+                      <span className="sub-section-title">Ordres de fabrication :</span>
+                      {canSupervisor && (
+                        <button className="btn-add-inline" onClick={() => openOrderModal(op.id)}>
+                          + Nouvel ordre
                         </button>
                       )}
                     </div>
-                    {(forecasts[op.id] ?? []).length === 0 ? (
-                      <p className="sub-empty">Aucune prévision</p>
+                    {(productionOrders[op.id] ?? []).length === 0 ? (
+                      <p className="sub-empty">Aucun ordre de fabrication</p>
                     ) : (
                       <ul className="sub-list">
-                        {(forecasts[op.id] ?? []).map(fc => (
-                          <li key={fc.id} className="sub-item">
+                        {(productionOrders[op.id] ?? []).map(order => (
+                          <li key={order.id} className="sub-item">
                             <span className="sub-bullet">•</span>
                             <span className="sub-text">
-                              {fmtDate(fc.plannedDate)} → {fc.plannedQuantity} unités →{' '}
-                              <span className={`status-badge status-${fc.status ?? ''}`}>{STATUS_LABEL[fc.status] ?? fc.status ?? '—'}</span>
-                            </span>
-                            {canSupervisor && (
-                              <span className="sub-actions">
-                                <button className="btn-icon" title="Modifier" onClick={() => openModal('forecast', op.id, fc)}>✎</button>
-                                <button className="btn-icon btn-icon-del" title="Supprimer" onClick={() => handleDelete('forecast', op.id, fc.id)}>✕</button>
+                              {fmtDate(order.plannedDate)} — {order.plannedQuantity} prévus
+                              {order.actualQuantity != null && ` · ${order.actualQuantity} réels`}
+                              {order.actualDuration  != null && ` · ${order.actualDuration} min`}
+                              {' '}
+                              <span className={`status-badge status-${order.status ?? ''}`}>
+                                {STATUS_LABEL[order.status] ?? order.status ?? '—'}
                               </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Completions */}
-                  <div className="op-sub-section">
-                    <div className="sub-section-header">
-                      <span className="sub-section-title">Réalisations :</span>
-                      {(completions[op.id] ?? []).length === 0 && (
-                        <button className="btn-add-inline" onClick={() => openModal('completion', op.id)}>
-                          + Ajouter une réalisation
-                        </button>
-                      )}
-                    </div>
-                    {(completions[op.id] ?? []).length === 0 ? (
-                      <p className="sub-empty">Aucune réalisation</p>
-                    ) : (
-                      <ul className="sub-list">
-                        {(completions[op.id] ?? []).map(cp => (
-                          <li key={cp.id} className="sub-item">
-                            <span className="sub-bullet">•</span>
-                            <span className="sub-text">
-                              {fmtDate(cp.date)} → {cp.actualQuantity} unités → {cp.actualDuration} min
                             </span>
-                            {canSupervisor && (
-                              <span className="sub-actions">
-                                <button className="btn-icon" title="Modifier" onClick={() => openModal('completion', op.id, cp)}>✎</button>
-                                <button className="btn-icon btn-icon-del" title="Supprimer" onClick={() => handleDelete('completion', op.id, cp.id)}>✕</button>
-                              </span>
-                            )}
+                            <span className="sub-actions">
+                              <button className="btn-icon" title="Modifier" onClick={() => openOrderModal(op.id, order)}>✎</button>
+                              {canSupervisor && (
+                                <button className="btn-icon btn-icon-del" title="Supprimer" onClick={() => handleDeleteOrder(op.id, order.id)}>✕</button>
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -397,6 +417,39 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
           </ul>
         )}
       </div>
+
+      {/* ── Associate existing operation modal ── */}
+      {showAssoc && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">Associer une opération existante</h3>
+            {assocLoading ? (
+              <p>Chargement...</p>
+            ) : allOperations.length === 0 ? (
+              <p className="sub-empty">Aucune opération disponible à associer.</p>
+            ) : (
+              <ul className="sub-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {allOperations.map(op => (
+                  <li key={op.id} className="sub-item" style={{ justifyContent: 'space-between' }}>
+                    <span className="sub-text">
+                      <strong>{op.label ?? `#${op.id}`}</strong>
+                      {op.workstation && <span className="op-meta" style={{ marginLeft: 8 }}>{op.workstation.label}</span>}
+                      {op.machine     && <span className="op-meta op-meta-machine" style={{ marginLeft: 4 }}>{op.machine.label}</span>}
+                    </span>
+                    <button className="btn-small btn-primary" disabled={associating}
+                      onClick={() => handleAssociate(op.id)}>
+                      Associer
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="form-actions" style={{ marginTop: 16 }}>
+              <button className="btn-secondary" onClick={closeAssoc}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add operation modal ── */}
       {showAdd && (
@@ -419,9 +472,7 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
                 <select className="field-input" required value={addForm.workstationId}
                   onChange={e => setAddForm(f => ({ ...f, workstationId: e.target.value }))}>
                   <option value="">-- Sélectionner un poste --</option>
-                  {workstations.map(w => (
-                    <option key={w.id} value={w.id}>{w.label ?? w.name ?? `#${w.id}`}</option>
-                  ))}
+                  {workstations.map(w => <option key={w.id} value={w.id}>{w.label ?? `#${w.id}`}</option>)}
                 </select>
               </label>
               <label className="form-field">
@@ -429,9 +480,7 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
                 <select className="field-input" value={addForm.machineId}
                   onChange={e => setAddForm(f => ({ ...f, machineId: e.target.value }))}>
                   <option value="">-- Aucune --</option>
-                  {machines.map(m => (
-                    <option key={m.id} value={m.id}>{m.label ?? m.name ?? `#${m.id}`}</option>
-                  ))}
+                  {machines.map(m => <option key={m.id} value={m.id}>{m.label ?? `#${m.id}`}</option>)}
                 </select>
               </label>
               <div className="form-actions">
@@ -466,9 +515,7 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
                 <select className="field-input" required value={opModal.form.workstationId}
                   onChange={e => setOpModal(m => ({ ...m, form: { ...m.form, workstationId: e.target.value } }))}>
                   <option value="">-- Sélectionner un poste --</option>
-                  {workstations.map(w => (
-                    <option key={w.id} value={w.id}>{w.label ?? w.name ?? `#${w.id}`}</option>
-                  ))}
+                  {workstations.map(w => <option key={w.id} value={w.id}>{w.label ?? `#${w.id}`}</option>)}
                 </select>
               </label>
               <label className="form-field">
@@ -476,9 +523,7 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
                 <select className="field-input" value={opModal.form.machineId}
                   onChange={e => setOpModal(m => ({ ...m, form: { ...m.form, machineId: e.target.value } }))}>
                   <option value="">-- Aucune --</option>
-                  {machines.map(m => (
-                    <option key={m.id} value={m.id}>{m.label ?? m.name ?? `#${m.id}`}</option>
-                  ))}
+                  {machines.map(m => <option key={m.id} value={m.id}>{m.label ?? `#${m.id}`}</option>)}
                 </select>
               </label>
               <div className="form-actions">
@@ -492,49 +537,57 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
         </div>
       )}
 
-      {/* ── Prévision / Réalisation modal ── */}
-      {modal && (
+      {/* ── Production order modal ── */}
+      {orderModal && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">
-              {modal.mode === 'edit'
-                ? (modal.type === 'forecast' ? 'Modifier la prévision' : 'Modifier la réalisation')
-                : (modal.type === 'forecast' ? 'Nouvelle prévision' : 'Nouvelle réalisation')}
+              {orderModal.mode === 'edit' ? "Modifier l'ordre de fabrication" : 'Nouvel ordre de fabrication'}
             </h3>
-            <form onSubmit={handleModalSubmit}>
+            <form onSubmit={handleOrderSubmit}>
+              {/* Planned fields — only editable by supervisors/admins */}
+              {canSupervisor && (
+                <>
+                  <label className="form-field">
+                    <span className="field-label">Date prévue *</span>
+                    <input type="date" className="field-input"
+                      required={orderModal.mode === 'create'}
+                      value={orderModal.form.plannedDate}
+                      onChange={e => setOrderModal(m => ({ ...m, form: { ...m.form, plannedDate: e.target.value } }))} />
+                  </label>
+                  <label className="form-field">
+                    <span className="field-label">Qté prévue *</span>
+                    <input type="number" min="1" className="field-input"
+                      required={orderModal.mode === 'create'}
+                      value={orderModal.form.plannedQuantity}
+                      onChange={e => setOrderModal(m => ({ ...m, form: { ...m.form, plannedQuantity: e.target.value } }))} />
+                  </label>
+                </>
+              )}
               <label className="form-field">
-                <span className="field-label">Date *</span>
-                <input type="date" className="field-input" required
-                  value={modal.form.date}
-                  onChange={e => setModal(m => ({ ...m, form: { ...m.form, date: e.target.value } }))} />
+                <span className="field-label">Statut</span>
+                <select className="field-input"
+                  value={orderModal.form.status}
+                  onChange={e => setOrderModal(m => ({ ...m, form: { ...m.form, status: e.target.value } }))}>
+                  {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
               </label>
               <label className="form-field">
-                <span className="field-label">Quantité (unités) *</span>
-                <input type="number" min="1" className="field-input" required
-                  value={modal.form.quantity}
-                  onChange={e => setModal(m => ({ ...m, form: { ...m.form, quantity: e.target.value } }))} />
+                <span className="field-label">Qté réelle</span>
+                <input type="number" min="1" className="field-input"
+                  value={orderModal.form.actualQuantity}
+                  onChange={e => setOrderModal(m => ({ ...m, form: { ...m.form, actualQuantity: e.target.value } }))} />
               </label>
-              {modal.type === 'forecast' && modal.mode === 'edit' ? (
-                <label className="form-field">
-                  <span className="field-label">Statut</span>
-                  <select className="field-input"
-                    value={modal.form.status}
-                    onChange={e => setModal(m => ({ ...m, form: { ...m.form, status: e.target.value } }))}>
-                    {FORECAST_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </label>
-              ) : modal.type === 'completion' ? (
-                <label className="form-field">
-                  <span className="field-label">Durée (minutes) *</span>
-                  <input type="number" min="1" className="field-input" required
-                    value={modal.form.duration}
-                    onChange={e => setModal(m => ({ ...m, form: { ...m.form, duration: e.target.value } }))} />
-                </label>
-              ) : null}
+              <label className="form-field">
+                <span className="field-label">Durée réelle (min)</span>
+                <input type="number" min="0" step="any" className="field-input"
+                  value={orderModal.form.actualDuration}
+                  onChange={e => setOrderModal(m => ({ ...m, form: { ...m.form, actualDuration: e.target.value } }))} />
+              </label>
               <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={closeModal} disabled={modal.saving}>Annuler</button>
-                <button type="submit" className="btn-primary" disabled={modal.saving}>
-                  {modal.saving ? 'Enregistrement...' : modal.mode === 'edit' ? 'Enregistrer' : 'Créer'}
+                <button type="button" className="btn-secondary" onClick={closeOrderModal} disabled={orderModal.saving}>Annuler</button>
+                <button type="submit" className="btn-primary" disabled={orderModal.saving}>
+                  {orderModal.saving ? 'Enregistrement...' : orderModal.mode === 'edit' ? 'Enregistrer' : 'Créer'}
                 </button>
               </div>
             </form>

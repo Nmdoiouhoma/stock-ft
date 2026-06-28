@@ -10,6 +10,7 @@ const EMPTY_FORM = {
   label: '',
   partId: '',
   supervisorId: '',
+  selectedOpIds: [],
 };
 
 export default function Routings({ isAdmin, isSupervisor, onView }) {
@@ -22,6 +23,9 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
   const [saving, setSaving] = useState(false);
   const [partsList, setPartsList] = useState([]);
   const [usersList, setUsersList] = useState([]);
+  const [operationsList, setOperationsList] = useState([]);
+  const [opsLoading, setOpsLoading] = useState(false);
+  const [opsExpanded, setOpsExpanded] = useState(false);
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -82,7 +86,20 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
     };
   }, [loadParts, loadUsers]);
 
-  const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); };
+  const loadOperations = async () => {
+    setOpsLoading(true);
+    try {
+      const res = await authFetch('/api/operations');
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json) ? json : (json['hydra:member'] ?? json.items ?? json.data ?? []);
+        setOperationsList(list);
+      }
+    } catch { /* ignore */ }
+    finally { setOpsLoading(false); }
+  };
+
+  const openCreate = () => { setForm({ ...EMPTY_FORM }); setEditingId(null); loadOperations(); };
   const openEdit = (r) => {
     setForm({
       reference: r.reference || '',
@@ -146,6 +163,14 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
         const msg = data?.errors ? data.errors.map(x => x.message).join(', ') : data?.error || `Erreur ${res.status}`;
         addToast(msg, 'error');
         return;
+      }
+      // After creation, associate selected operations
+      if (!editingId && (form.selectedOpIds ?? []).length > 0) {
+        await Promise.allSettled(
+          form.selectedOpIds.map(opId =>
+            authFetch(`/api/routings/${data.id}/operations/${opId}`, { method: 'POST' })
+          )
+        );
       }
       addToast(editingId ? 'Gamme modifiée avec succès' : 'Gamme créée avec succès', 'success');
       closeForm();
@@ -303,6 +328,47 @@ export default function Routings({ isAdmin, isSupervisor, onView }) {
                   ))}
                 </select>
               </label>
+
+              {!editingId && (
+                <div className="form-field">
+                  <button type="button" onClick={() => setOpsExpanded(x => !x)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, color: '#475569' }}>
+                    <span style={{ fontSize: 11, transition: 'transform .15s', transform: opsExpanded ? 'rotate(90deg)' : 'none' }}>▶</span>
+                    Opérations à associer
+                    {(form.selectedOpIds ?? []).length > 0 && (
+                      <span style={{ marginLeft: 4, background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 12 }}>
+                        {form.selectedOpIds.length}
+                      </span>
+                    )}
+                  </button>
+                  {opsExpanded && (
+                    opsLoading ? (
+                      <p style={{ margin: '6px 0 0', fontSize: 13, color: '#888' }}>Chargement...</p>
+                    ) : operationsList.length === 0 ? (
+                      <p style={{ margin: '6px 0 0', fontSize: 13, color: '#888' }}>Aucune opération disponible</p>
+                    ) : (
+                      <div style={{ marginTop: 6, maxHeight: 160, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px' }}>
+                        {operationsList.map(op => (
+                          <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer', fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={(form.selectedOpIds ?? []).includes(op.id)}
+                              onChange={e => setForm(f => ({
+                                ...f,
+                                selectedOpIds: e.target.checked
+                                  ? [...(f.selectedOpIds ?? []), op.id]
+                                  : (f.selectedOpIds ?? []).filter(id => id !== op.id),
+                              }))}
+                            />
+                            {op.label ?? `#${op.id}`}
+                            {op.workstation && <span style={{ fontSize: 11, color: '#94a3b8' }}>{op.workstation.label}</span>}
+                          </label>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
 
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={closeForm} disabled={saving}>Annuler</button>
