@@ -4,8 +4,8 @@ import '../components/Quotes.css';
 import { authFetch } from '../utils/auth';
 import { useToast, ToastContainer } from '../components/Toast';
 
-const STATUS_LABELS = { pending: 'En attente', accepted: 'Accepté', expired: 'Expiré', cancelled: 'Annulé' };
-const STATUS_CLASS  = { pending: 'badge-warning', accepted: 'badge-success', expired: 'badge-danger', cancelled: 'badge-neutral' };
+const STATUS_LABELS = { pending: 'En attente', accepted: 'Accepté', completed: 'Terminé', expired: 'Expiré', cancelled: 'Annulé' };
+const STATUS_CLASS  = { pending: 'badge-warning', accepted: 'badge-success', completed: 'badge-success', expired: 'badge-danger', cancelled: 'badge-neutral' };
 
 const PAGE_SIZE = 10;
 

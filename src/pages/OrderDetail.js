@@ -52,7 +52,8 @@ export default function OrderDetail({ id, canEdit, onBack }) {
   if (!order)  return <div className="empty-block">Aucune donnée</div>;
 
   const lines = order.lines || [];
-  const total = lines.reduce((s, l) => s + parseFloat(l.unitPrice || 0) * (l.quantity || 0), 0);
+  const quoteIds = [...new Set(lines.map(l => l.quoteId).filter(Boolean))];
+  const quoteLabel = quoteIds.length > 0 ? quoteIds.map(qid => `#${qid}`).join(', ') : '—';
 
   return (
     <div className="parts-container">
@@ -63,7 +64,7 @@ export default function OrderDetail({ id, canEdit, onBack }) {
         <div style={{ flex: 1 }}>
           <h2 className="parts-title">Commande #{order.id}</h2>
           <p className="parts-subtitle">
-            Devis : <strong>{order.quote?.reference ?? '—'}</strong>
+            Devis : <strong>{quoteLabel}</strong>
           </p>
         </div>
         {canEdit && (
@@ -95,13 +96,13 @@ export default function OrderDetail({ id, canEdit, onBack }) {
           </div>
         </div>
         <div className="dashboard-card">
-          <div className="dashboard-label">Devis référencé</div>
-          <div className="dashboard-value-small">{order.quote?.reference ?? '—'}</div>
+          <div className="dashboard-label">Devis associés</div>
+          <div className="dashboard-value-small">{quoteLabel}</div>
         </div>
         <div className="dashboard-card">
-          <div className="dashboard-label">Montant devis</div>
+          <div className="dashboard-label">Montant commande</div>
           <div className="dashboard-value">
-            {parseFloat(order.quote?.totalAmount || 0).toFixed(2)} €
+            {parseFloat(order.totalAmount || 0).toFixed(2)} €
           </div>
         </div>
         <div className="dashboard-card">
@@ -147,7 +148,7 @@ export default function OrderDetail({ id, canEdit, onBack }) {
             </table>
             <div className="total-row" style={{ padding: '12px 16px 4px' }}>
               <span>Total :</span>
-              <span>{total.toFixed(2)} €</span>
+              <span>{parseFloat(order.totalAmount || 0).toFixed(2)} €</span>
             </div>
           </div>
         )}

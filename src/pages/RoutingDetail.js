@@ -378,7 +378,7 @@ export default function RoutingDetail({ id, isAdmin, isSupervisor, onBack }) {
                   <div className="op-sub-section">
                     <div className="sub-section-header">
                       <span className="sub-section-title">Ordres de fabrication :</span>
-                      {canSupervisor && (
+                      {canSupervisor && (productionOrders[op.id] ?? []).length === 0 && (
                         <button className="btn-add-inline" onClick={() => openOrderModal(op.id)}>
                           + Nouvel ordre
                         </button>

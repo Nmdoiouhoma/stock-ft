@@ -35,10 +35,14 @@ export default function Orders({ onView }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return orders;
-    return orders.filter(o =>
-      String(o.quote?.reference || '').toLowerCase().includes(q) ||
-      String(o.status || '').toLowerCase().includes(q)
-    );
+    return orders.filter(o => {
+      const quoteIds = [...new Set((o.lines || []).map(l => l.quoteId).filter(Boolean))].join(' ');
+      return (
+        String(quoteIds).includes(q) ||
+        String(o.status || '').toLowerCase().includes(q) ||
+        String(o.id || '').includes(q)
+      );
+    });
   }, [orders, search]);
 
   const paginated = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
@@ -58,7 +62,7 @@ export default function Orders({ onView }) {
       <div className="table-controls">
         <input
           className="search-input"
-          placeholder="Rechercher par référence de devis…"
+          placeholder="Rechercher par n° devis, statut, id…"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
         />
@@ -75,8 +79,7 @@ export default function Orders({ onView }) {
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Devis</th>
-                  <th>Client</th>
+                  <th>Devis associés</th>
                   <th>Créée le</th>
                   <th>Statut</th>
                   <th>Montant</th>
@@ -84,31 +87,28 @@ export default function Orders({ onView }) {
                 </tr>
               </thead>
               <tbody>
-                {paginated.map(o => (
-                  <tr key={o.id}>
-                    <td style={{ color: '#94a3b8', fontSize: 13 }}>#{o.id}</td>
-                    <td className="cell-reference">{o.quote?.reference ?? '—'}</td>
-                    <td>
-                      {o.quote?.client
-                        ? `${o.quote.client.firstname} ${o.quote.client.lastname}`
-                        : '—'}
-                    </td>
-                    <td>{o.createdAt || '—'}</td>
-                    <td>
-                      <span className={`status-badge ${STATUS_CLASS[o.status] || 'badge-neutral'}`}>
-                        {STATUS_LABELS[o.status] || o.status}
-                      </span>
-                    </td>
-                    <td className="cell-numeric">
-                      {o.quote?.totalAmount
-                        ? `${parseFloat(o.quote.totalAmount).toFixed(2)} €`
-                        : '—'}
-                    </td>
-                    <td className="cell-actions">
-                      <button className="btn-view" onClick={() => onView(o.id)}>Voir</button>
-                    </td>
-                  </tr>
-                ))}
+                {paginated.map(o => {
+                  const quoteIds = [...new Set((o.lines || []).map(l => l.quoteId).filter(Boolean))];
+                  const quoteLabel = quoteIds.length > 0 ? quoteIds.map(qid => `#${qid}`).join(', ') : '—';
+                  return (
+                    <tr key={o.id}>
+                      <td style={{ color: '#94a3b8', fontSize: 13 }}>#{o.id}</td>
+                      <td className="cell-reference">{quoteLabel}</td>
+                      <td>{o.createdAt || '—'}</td>
+                      <td>
+                        <span className={`status-badge ${STATUS_CLASS[o.status] || 'badge-neutral'}`}>
+                          {STATUS_LABELS[o.status] || o.status}
+                        </span>
+                      </td>
+                      <td className="cell-numeric">
+                        {o.totalAmount ? `${parseFloat(o.totalAmount).toFixed(2)} €` : '—'}
+                      </td>
+                      <td className="cell-actions">
+                        <button className="btn-view" onClick={() => onView(o.id)}>Voir</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
